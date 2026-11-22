@@ -1,0 +1,143 @@
+# Quality attributes as measurable scenarios (stimulus, environment, response, measure).
+# "What does *good* mean here?" Every architectural choice should trace back to one of these.
+
+# ---------------- Road Risk ----------------
+- id: rr-latency
+  project: road-risk
+  attribute: Performance (latency)
+  why_it_matters: A warning that arrives late is useless; the car checks the road ahead many times a second.
+  scenario: { stimulus: "The car reaches a new GPS position", environment: "Normal driving, on the car's hardware", response: "Risk for the road ahead is known", measure: "Decision in under 50 ms; a single lookup in microseconds" }
+  status: partly
+  evidence: "Today a 250 m lookup takes about 25 ms on a laptop (a database query). A precomputed grid prototype took 0.29 µs. The car path will use precomputed tiles (ADR-0003)."
+  tactics: [Precompute offline, Look up in memory, One persistent connection instead of reconnecting, Spatial index (R-tree)]
+  stage: p0
+- id: rr-availability
+  project: road-risk
+  attribute: Availability (offline operation)
+  why_it_matters: Tunnels, rural Lapland and roaming abroad mean no network, and warnings must still work there.
+  scenario: { stimulus: "Network connection is lost", environment: "Driving in an area with no coverage", response: "Warnings continue from on-board data", measure: "No loss of the core warning function" }
+  status: planned
+  evidence: "Designed into the target architecture: tiles on the device; live data only improves results (roadmap principle 4)."
+  tactics: [Data on the device, Live inputs optional, Sun position computed locally (ADR-0002)]
+  stage: p5
+- id: rr-precision
+  project: road-risk
+  attribute: Usefulness (few false alarms)
+  why_it_matters: A system that cries wolf gets switched off, so false alarms destroy its value.
+  scenario: { stimulus: "Driving a normal route", environment: "Any conditions", response: "Alerts only for genuinely elevated risk", measure: "Fewer than 1 false alarm per 100 km" }
+  status: planned
+  evidence: "Requires exposure-normalised, calibrated risk (Phases 2 and 4) and an alert policy with cooldowns (Phase 5)."
+  tactics: [Risk relative to exposure, Empirical Bayes shrinkage, Calibrated thresholds, Repeat suppression]
+  stage: p2
+- id: rr-explainability
+  project: road-risk
+  attribute: Explainability
+  why_it_matters: Drivers trust, and regulators accept, alerts they can understand.
+  scenario: { stimulus: "Driver asks why an alert fired", environment: "In the car, possibly offline", response: "A short, faithful explanation", measure: "The explanation never contradicts the risk engine" }
+  status: planned
+  evidence: "ADR-0001: the LLM explains, never decides; faithfulness is evaluated in Phase 6."
+  tactics: [Deterministic decision, Pre-generated explanations, Template fallback]
+  stage: p6
+- id: rr-reproducibility
+  project: road-risk
+  attribute: Reproducibility and traceability
+  why_it_matters: A risk number shown to a driver must trace back to exact data and code.
+  scenario: { stimulus: "Rebuild the database from the raw files", environment: "Any machine", response: "Identical content", measure: "Equal content fingerprints across builds; every raw file checksummed" }
+  status: met
+  evidence: "Three builds gave identical fingerprints; ingest_files records each raw file's SHA-256 (ADR-0008)."
+  tactics: [Cleaning as code, Pinned data releases with checksums, Atomic builds, Lock files for dependencies]
+  stage: p0
+- id: rr-testability
+  project: road-risk
+  attribute: Testability and modifiability
+  why_it_matters: AI writes the code fast, so tests must catch mistakes fast.
+  scenario: { stimulus: "A developer or agent changes the scoring code", environment: "A pull request", response: "Regressions are caught before merge", measure: "117 automated tests in CI; characterization tests pin known scores" }
+  status: met
+  evidence: "CI is required on main; snapshot comparisons proved refactors changed nothing."
+  tactics: [One-job modules, Characterization tests, Synthetic test data, Required CI checks]
+  stage: p0
+- id: rr-security
+  project: road-risk
+  attribute: Security (no information leaks)
+  why_it_matters: Error messages can reveal file paths, SQL and versions to an attacker.
+  scenario: { stimulus: "An internal error during a request", environment: "Production API", response: "The client gets only an error id; details go to the log", measure: "No paths, SQL or exception text in any response" }
+  status: met
+  evidence: "One app-wide exception handler; tests check that no path leaks on three endpoints."
+  tactics: [Central error handler, Validation at the edge, Parameterised SQL, Least-privilege CI]
+  stage: p0
+
+# ---------------- projectViewer ----------------
+- id: pv-responsiveness
+  project: project-viewer
+  attribute: Performance (incremental updates)
+  why_it_matters: The map should update while you work, not after a coffee break.
+  scenario: { stimulus: "One file is saved in a large project", environment: "pandas, 1,440 files", response: "The map is up to date", measure: "1.65 s (vs 4.3 s cold); unchanged files are never re-parsed" }
+  status: met
+  evidence: "Measured in the project status; content-addressed cache (ADR-0003)."
+  tactics: [Pure per-file pass, Content-addressed cache, Parallel parsing above 64 misses, Rebuild only when the fingerprint changes]
+  stage: p1
+- id: pv-honesty
+  project: project-viewer
+  attribute: Correctness (honest links)
+  why_it_matters: A wrong link on an architecture map is worse than a missing one.
+  scenario: { stimulus: "The analyser can't prove a call", environment: "Dynamic Python code", response: "The link is tagged or left out, never guessed", measure: "Every edge carries proven / inferred / pattern; unresolved calls are counted" }
+  status: met
+  evidence: "Hand-checked 13/13 known links on a real project; certainty shown by opacity (ADR-0002)."
+  tactics: [Certainty levels, Count instead of guess, Fixture-based tests]
+  stage: p1
+- id: pv-non-interference
+  project: project-viewer
+  attribute: Non-interference (never disturb the developer)
+  why_it_matters: A monitoring tool that can slow down or block the AI agent would be uninstalled.
+  scenario: { stimulus: "The viewer is closed while the agent edits code", environment: "Claude Code running with the hook installed", response: "The agent carries on unaffected", measure: "Hook finishes within 0.3 s, always exits 0, prints nothing" }
+  status: met
+  evidence: "hook.py catches everything including SystemExit; the installed command adds `|| true`."
+  tactics: [Short timeout, Swallow errors, Exit 0 always, Tiny payload]
+  stage: p4
+- id: pv-privacy
+  project: project-viewer
+  attribute: Privacy
+  why_it_matters: Code and prompts are private; nothing may leave the machine.
+  scenario: { stimulus: "Someone on the network tries to reach the viewer", environment: "Shared Wi-Fi", response: "Nothing answers", measure: "Server bound to 127.0.0.1 only; prompts stored locally" }
+  status: met
+  evidence: "ThreadingHTTPServer(('127.0.0.1', port)); source access limited to analysed files; POST needs a custom header."
+  tactics: [Bind to localhost, Allow-list served files, Custom header against cross-site posts, Size limit on events]
+  stage: p4
+
+# ---------------- Learning app ----------------
+- id: la-accuracy
+  project: learning-app
+  attribute: Accuracy (never drifts from the projects)
+  why_it_matters: A learning site that teaches outdated code teaches wrong things.
+  scenario: { stimulus: "A project renames a function used in a walkthrough", environment: "Next sync and build", response: "The build fails and names the stale snippet", measure: "Zero unverified snippets, tools, ADRs or endpoints on main" }
+  status: met
+  evidence: "The coverage check cross-checks every reference against generated facts; tested by removing a card."
+  tactics: [Import records, Generate facts, Verify snippets, Coverage check in CI]
+  stage: L2
+- id: la-performance
+  project: learning-app
+  attribute: Performance and robustness
+  why_it_matters: Learners on any device and connection.
+  scenario: { stimulus: "A learner opens any page", environment: "Mobile, slow connection", response: "Content readable immediately", measure: "Static HTML; JavaScript only for interactive islands" }
+  status: met
+  evidence: "Astro static build; islands hydrate when visible (client:visible)."
+  tactics: [Static generation, Islands, Lazy hydration, Search index built at build time]
+  stage: L0
+- id: la-learnability
+  project: learning-app
+  attribute: Learnability
+  why_it_matters: The site exists to teach; confusion is a defect.
+  scenario: { stimulus: "A new learner enters a project", environment: "No prior knowledge of the project", response: "Sees only that project, in a fixed order, with acronyms spelled out", measure: "Same sections in every project; every acronym explained on first use" }
+  status: met
+  evidence: "Scoped navigation middleware; automatic acronym expansion from one list."
+  tactics: [Scoped navigation, Consistent structure, Acronym expansion, Pick first then reveal]
+  stage: L2
+- id: la-privacy
+  project: learning-app
+  attribute: Privacy (public site)
+  why_it_matters: Bulk imports are where private details slip through.
+  scenario: { stimulus: "A synced record or source file contains an email or a local path", environment: "npm run sync", response: "The sync stops and names the file", measure: "No personal data published" }
+  status: met
+  evidence: "The guard caught a test email in projectViewer; reserved example domains are allowed by rule (RFC 2606)."
+  tactics: [Guard at the boundary, Public repos only, Fix at the source]
+  stage: L1

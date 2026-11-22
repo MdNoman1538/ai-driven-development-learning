@@ -4,6 +4,7 @@
   tagline: An in-car, offline warning system for risky roads, built on twelve years of Finnish crash data.
   kind: Data + AI product
   status: "Phase 0 of 10: engineering foundations, nearly complete"
+  status_match: "Phase 0"
   problem: >-
     Some road segments and junctions are far more dangerous under certain conditions, such as an
     unlit curve on an icy December evening, but a driver has no way of knowing that while
@@ -18,18 +19,31 @@
     - Where an LLM belongs in a safety product, and where it must never be
     - How performance comes from architecture (precompute, then look up) more than from tuning
     - How a professional workflow (PRs, CI, tests, ADRs) keeps AI-written code trustworthy
+  styles: [modular-monolith, pipeline, layered-dependencies, cloud-edge-split]
   phases:
-    - { name: "0 · Engineering foundations", state: active, summary: "Workflow, CI, tests, fixes, a clean and versioned data foundation" }
-    - { name: "1 · Data foundation v2", state: next, summary: "Road network, map-matching every crash to a road segment, traffic exposure, sun position" }
-    - { name: "2 · Statistical risk baseline", state: later, summary: "Empirical Bayes risk per segment, under each condition, with confidence intervals" }
-    - { name: "3 · Real-time context", state: later, summary: "Live road weather, forecasts and traffic messages" }
-    - { name: "4 · ML conditional risk model", state: later, summary: "A calibrated gradient-boosted model, exported to ONNX" }
-    - { name: "5 · Road-ahead & alert engine", state: later, summary: "GPS filtering, the road ahead, alert policy: the product core" }
-    - { name: "6 · LLM layer", state: later, summary: "Explanations, traffic-message extraction, driver Q&A, with evals" }
-    - { name: "7 · Fine-tuning", state: later, summary: "A LoRA-tuned small model for consistent Finnish/English alert wording" }
-    - { name: "8 · Edge deployment", state: later, summary: "On-device runtime, risk tiles, over-the-air updates" }
-    - { name: "9 · MLOps", state: later, summary: "Automated retraining, monitoring, drift detection" }
-    - { name: "10 · Industry readiness", state: later, summary: "Safety case, privacy, licensing" }
+    - id: p0
+      name: "0 · Engineering foundations"
+      state: active
+      summary: "Workflow, CI, tests, fixes, a clean and versioned data foundation"
+      prepare: [git-and-github-flow, continuous-integration, testing-strategy, reproducible-environments, data-pipelines-and-cleaning, data-versioning]
+    - id: p1
+      name: "1 · Data foundation v2"
+      state: next
+      summary: "Road network, map-matching every crash to a road segment, traffic exposure, sun position"
+      prepare: [coordinate-systems-and-spatial-indexes, risk-vs-counts, modular-architecture]
+    - id: p2
+      name: "2 · Statistical risk baseline"
+      state: later
+      summary: "Empirical Bayes risk per segment, under each condition, with confidence intervals"
+      prepare: [risk-vs-counts, measure-dont-guess]
+    - { id: p3, name: "3 · Real-time context", state: later, summary: "Live road weather, forecasts and traffic messages" }
+    - { id: p4, name: "4 · ML conditional risk model", state: later, summary: "A calibrated gradient-boosted model, exported to ONNX" }
+    - { id: p5, name: "5 · Road-ahead & alert engine", state: later, summary: "GPS filtering, the road ahead, alert policy: the product core", prepare: [performance-by-architecture] }
+    - { id: p6, name: "6 · LLM layer", state: later, summary: "Explanations, traffic-message extraction, driver Q&A, with evals", prepare: [llm-where-and-where-not] }
+    - { id: p7, name: "7 · Fine-tuning", state: later, summary: "A LoRA-tuned small model for consistent Finnish/English alert wording" }
+    - { id: p8, name: "8 · Edge deployment", state: later, summary: "On-device runtime, risk tiles, over-the-air updates" }
+    - { id: p9, name: "9 · MLOps", state: later, summary: "Automated retraining, monitoring, drift detection" }
+    - { id: p10, name: "10 · Industry readiness", state: later, summary: "Safety case, privacy, licensing" }
 
 - id: project-viewer
   order: 2
@@ -37,6 +51,7 @@
   tagline: A live, explorable map of a codebase that shows what every change touches, and records how it was built, by you and by AI.
   kind: Developer tool
   status: "Phases 1–3 done; phase 4 (service + AI recorder) partly done"
+  status_match: "Phase: 3"
   problem: >-
     A text diff only shows the lines that changed, not what those lines affect. With AI writing
     code faster than a person can read it, you need to *see* the architecture and the impact of
@@ -51,34 +66,56 @@
     - How a content-addressed cache makes work proportional to the change, not the codebase
     - How user feedback reshaped a design (everything-at-once → one level at a time)
     - How to integrate with an AI agent safely (a hook that can never block it)
+  styles: [pipeline, microkernel, client-server-local]
   phases:
-    - { name: "1 · Python cartographer", state: done, summary: "Read a repo into a 'world': modules, files, functions and the links between them" }
-    - { name: "2 · Viewer", state: done, summary: "The 2.5D map in the browser: one folder level at a time, with lenses" }
-    - { name: "3 · Changes", state: done, summary: "Live and per-commit changes, impact, change notes, the Show tour" }
-    - { name: "4 · Service + recorder", state: active, summary: "Several projects, follow activity, the Claude Code hook; background service still to come" }
-    - { name: "5 · PR view", state: later, summary: "GitHub PRs, CI status and review findings on the map" }
-    - { name: "6 · Summaries", state: later, summary: "Optional local small-LLM summaries, checked against the recorded facts" }
+    - id: p1
+      name: "1 · Python cartographer"
+      state: done
+      summary: "Read a repo into a 'world': modules, files, functions and the links between them"
+      prepare: [static-analysis-and-code-maps, caching-by-content]
+    - id: p2
+      name: "2 · Viewer"
+      state: done
+      summary: "The 2.5D map in the browser: one folder level at a time, with lenses"
+      prepare: [modular-architecture]
+    - id: p3
+      name: "3 · Changes"
+      state: done
+      summary: "Live and per-commit changes, impact, change notes, the Show tour"
+      prepare: [git-and-github-flow]
+    - id: p4
+      name: "4 · Service + recorder"
+      state: active
+      summary: "Several projects, follow activity, the Claude Code hook; background service still to come"
+      prepare: [ai-driven-development]
+    - { id: p5, name: "5 · PR view", state: later, summary: "GitHub PRs, CI status and review findings on the map", prepare: [ai-code-review] }
+    - { id: p6, name: "6 · Summaries", state: later, summary: "Optional local small-LLM summaries, checked against the recorded facts", prepare: [llm-where-and-where-not] }
 
 - id: learning-app
   order: 3
   name: AI Driven Development Learning
-  tagline: This site. How a learning app that keeps itself up to date was designed and built.
+  tagline: This site. How a learning platform that keeps itself up to date was designed and built.
   kind: Learning platform
-  status: "First version: records, teaching layer, interactive explorers"
+  status: "Version 2: scoped projects, code-level learning, patterns, trade-offs, algorithms"
   problem: >-
     Building fast with an AI agent produces working software, but the person directing it can
     end up not understanding the decisions. Summaries read afterwards don't teach much.
   goal: >-
     A public, interactive place to learn the reasoning behind real projects (architecture,
-    decisions, trade-offs), which stays accurate because it's generated from the projects' own
-    records and fails its build when an explanation is missing.
+    decisions, trade-offs, code), which stays accurate because it's generated from the projects
+    themselves and fails its build when an explanation is missing.
   learn:
-    - Why a static site is often the best architecture for content
-    - How to keep documentation honest (import records, generate facts, check coverage)
+    - Why a static site with interactive islands is often the best architecture for content
+    - How to keep documentation honest (import records, read the code, verify snippets, check coverage)
     - How typed content schemas enforce quality like a compiler enforces types
     - How "pick first, then reveal" turns reading into active learning
+  styles: [static-site-islands, pipeline]
   phases:
-    - { name: "L0 · Foundation", state: done, summary: "Repo, stack, content model, deploy pipeline" }
-    - { name: "L1 · Core content", state: done, summary: "Three projects: architecture, decisions, stack, journey, concepts, glossary" }
-    - { name: "L2 · Keeping it current", state: active, summary: "Sync, coverage check and the update rule in every project" }
-    - { name: "L3 · Quizzes", state: later, summary: "Question banks, scenarios, spaced repetition, progress" }
+    - { id: L0, name: "L0 · Foundation", state: done, summary: "Repo, stack, content model, deploy pipeline", prepare: [static-sites-and-content-as-data] }
+    - { id: L1, name: "L1 · Core content", state: done, summary: "Three projects: architecture, decisions, stack, journey, concepts, glossary", prepare: [architecture-decision-records] }
+    - id: L2
+      name: "L2 · Code-level learning & staying current"
+      state: active
+      summary: "Scoped projects, code readers, verified walkthroughs, patterns, trade-offs, algorithms, stage-aligned learning paths"
+      prepare: [static-analysis-and-code-maps, testing-strategy]
+    - { id: L3, name: "L3 · Quizzes & katas", state: next, summary: "Question banks, architecture katas, spaced repetition, progress" }

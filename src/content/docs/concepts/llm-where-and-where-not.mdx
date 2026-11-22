@@ -4,6 +4,13 @@ description: "Why the safety decision is deterministic, and what small LLMs do w
 concept:
   summary: "Why the safety decision is deterministic, and what small LLMs do well."
   projects: [road-risk, project-viewer]
+  uses:
+    road-risk:
+      how: 'ADR-0001: statistical models decide; the LLM only explains and converses.'
+      stage: p0
+    project-viewer:
+      how: Recording is deterministic; an LLM may only summarise recorded facts later.
+      stage: p4
   level: core
 ---
 

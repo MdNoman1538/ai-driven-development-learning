@@ -4,6 +4,10 @@ description: "Release assets, checksums and atomic writes: treating data like a 
 concept:
   summary: "Release assets, checksums and atomic writes: treating data like a pinned dependency."
   projects: [road-risk]
+  uses:
+    road-risk:
+      how: The database is a GitHub Release pinned by size and SHA-256 (ADR-0007).
+      stage: p0
   level: core
 ---
 

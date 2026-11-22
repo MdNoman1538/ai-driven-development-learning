@@ -4,6 +4,13 @@ description: "Profiling, benchmarks and the wrong diagnosis that a profile corre
 concept:
   summary: "Profiling, benchmarks and the wrong diagnosis that a profile corrected."
   projects: [road-risk, project-viewer]
+  uses:
+    road-risk:
+      how: A benchmark changed the architecture; a profile corrected a wrong diagnosis.
+      stage: p0
+    project-viewer:
+      how: 'Cold and warm timings recorded for every phase (pandas: 4.3 s / 1.6 s).'
+      stage: p1
   level: core
 ---
 

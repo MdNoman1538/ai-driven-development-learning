@@ -1,0 +1,135 @@
+# The architect's competency map: what a software architect is expected to know, and where these
+# projects let you learn it. Evidence refs: concept:, decision:, pattern:, tradeoff:, algorithm:,
+# quality:, walkthrough:, style:  (all checked by the build).
+
+- id: thinking
+  order: 1
+  name: Architectural thinking
+  why: Architecture is the set of decisions that are expensive to change. The core skill is weighing trade-offs and recording why.
+  topics:
+    - { name: "Everything is a trade-off", what: "Every option has costs; the job is choosing which costs to accept.", status: strong, evidence: [tradeoff:rr-memory-vs-db, tradeoff:pv-stdlib-server, tradeoff:la-static-vs-server] }
+    - { name: "Architecture Decision Records", what: "Context, options, decision, consequences, never rewritten, only superseded.", status: strong, evidence: [concept:architecture-decision-records, decision:pv-0006, decision:rr-0008] }
+    - { name: "Why over how", what: "Code shows how; the architect's record explains why.", status: strong, evidence: [concept:architecture-decision-records] }
+    - { name: "Measure before deciding", what: "Benchmarks and profiles, not intuition, drive performance decisions.", status: strong, evidence: [concept:measure-dont-guess, decision:rr-0003] }
+
+- id: quality
+  order: 2
+  name: Quality attributes
+  why: "'Good' must be defined measurably (latency, availability, security…) before any design choice can be judged."
+  topics:
+    - { name: "Quality attribute scenarios", what: "Stimulus, environment, response, measure: a testable definition of 'good'.", status: strong, evidence: [quality:rr-latency, quality:pv-responsiveness, quality:la-accuracy] }
+    - { name: "Performance and latency", what: "Time budgets and where time goes.", status: strong, evidence: [quality:rr-latency, concept:performance-by-architecture] }
+    - { name: "Availability and offline operation", what: "Keep working when dependencies fail.", status: partial, evidence: [quality:rr-availability], gap: "Designed, not yet built (Phase 5)." }
+    - { name: "Security and privacy", what: "No leaks, least privilege, guards at boundaries.", status: strong, evidence: [quality:rr-security, quality:pv-privacy, quality:la-privacy] }
+    - { name: "Testability and modifiability", what: "Change safely and quickly.", status: strong, evidence: [quality:rr-testability, concept:testing-strategy] }
+
+- id: modularity
+  order: 3
+  name: Modularity
+  why: Cohesion inside modules and loose coupling between them make change local and cheap.
+  topics:
+    - { name: "Cohesion: one job per module", what: "Everything in a module serves the same purpose.", status: strong, evidence: [concept:modular-architecture, decision:rr-0006] }
+    - { name: "Coupling and dependency direction", what: "Dependencies point one way; nothing depends on the UI.", status: strong, evidence: [style:layered-dependencies] }
+    - { name: "Enforcing structure automatically", what: "Tests that fail when the structure is broken.", status: partial, evidence: [pattern:fitness-function], gap: "An import-direction check (e.g. import-linter) is planned but not built." }
+
+- id: styles
+  order: 4
+  name: Architecture styles
+  why: The overall shape of a system determines what's easy and what's hard for years.
+  topics:
+    - { name: "Modular monolith", what: "One deployable, many modules.", status: strong, evidence: [style:modular-monolith] }
+    - { name: "Pipeline", what: "A sequence of single-purpose steps.", status: strong, evidence: [style:pipeline, walkthrough:rr-rebuild-database, walkthrough:pv-map-repo] }
+    - { name: "Microkernel / plugins", what: "A small core with pluggable capabilities.", status: partial, evidence: [style:microkernel], gap: "Only one plugin (Python) exists so far." }
+    - { name: "Cloud/edge split", what: "Precompute centrally, look up at the edge.", status: partial, evidence: [style:cloud-edge-split, tradeoff:rr-memory-vs-db], gap: "The edge side is planned (Phase 8)." }
+    - { name: "Event-driven and microservices", what: "Independent services communicating through events or APIs.", status: gap, gap: "Not used in these projects; learn from the catalogue and katas (coming)." }
+
+- id: data
+  order: 5
+  name: Data architecture
+  why: Data outlives code. Its model, quality and lineage decide what the system can ever know.
+  topics:
+    - { name: "Keys and data modelling", what: "What makes a row unique, and how tables relate.", status: strong, evidence: [decision:rr-0008, tradeoff:rr-composite-key] }
+    - { name: "Missing values and cleaning as code", what: "NULL, normalisation, rules in the pipeline.", status: strong, evidence: [concept:data-pipelines-and-cleaning, tradeoff:rr-null-vs-unknown, pattern:fail-fast] }
+    - { name: "Data versioning and lineage", what: "Named, verifiable data versions; tracing numbers back to sources.", status: strong, evidence: [concept:data-versioning, pattern:verify-before-use] }
+    - { name: "Indexes and query planning", what: "How databases find data quickly.", status: strong, evidence: [algorithm:rtree, concept:coordinate-systems-and-spatial-indexes] }
+    - { name: "Analytics (OLAP) vs transactions (OLTP)", what: "Different databases for different jobs.", status: partial, evidence: [decision:rr-0003], gap: "Only the analytics side is used." }
+    - { name: "Batch vs streaming", what: "Data that arrives yearly vs continuously.", status: gap, gap: "Streaming arrives with live context in Phase 3." }
+
+- id: apis
+  order: 6
+  name: APIs and integration
+  why: Interfaces are contracts; they're the hardest part of a system to change.
+  topics:
+    - { name: "Contracts and validation", what: "Typed inputs, rules at the edge, clear errors.", status: strong, evidence: [pattern:dto, walkthrough:rr-risk-request] }
+    - { name: "Errors and versioning", what: "Safe error responses; version breaking changes.", status: strong, evidence: [pattern:central-error-handler, concept:api-design-and-errors] }
+    - { name: "Caching over HTTP", what: "ETags and 304s.", status: strong, evidence: [pattern:conditional-get] }
+    - { name: "Hooks and fail-safe integration", what: "Integrations that can't hurt the host.", status: strong, evidence: [pattern:fail-safe-integration, walkthrough:pv-ai-hook] }
+    - { name: "Retries, idempotency, circuit breakers", what: "Surviving unreliable networks.", status: partial, evidence: [pattern:idempotency], gap: "Retries and circuit breakers arrive with live data sources (Phase 3)." }
+
+- id: patterns
+  order: 7
+  name: Design patterns
+  why: Named solutions to recurring problems give a shared vocabulary and avoid reinventing.
+  topics:
+    - { name: "Creational and structural", what: "How objects are created and composed.", status: strong, evidence: [pattern:shared-instance, pattern:gateway, pattern:registry] }
+    - { name: "Concurrency", what: "Safe sharing between threads and processes.", status: strong, evidence: [pattern:lazy-initialization, pattern:pure-core-parallel] }
+    - { name: "Reliability", what: "Fail fast, fail safe, atomic writes.", status: strong, evidence: [pattern:atomic-write, pattern:fail-fast, pattern:fail-safe-integration] }
+    - { name: "Data", what: "Quarantine, content-addressed caching, dirty checking.", status: strong, evidence: [pattern:pipeline-quarantine, pattern:content-addressed-cache, pattern:dirty-checking] }
+
+- id: algorithms
+  order: 8
+  name: Algorithms and data science
+  why: The right data structure or statistical method often matters more than any amount of tuning.
+  topics:
+    - { name: "Data structures and complexity", what: "Heaps, trees, hashing; O(n log k) vs O(n log n).", status: strong, evidence: [algorithm:top-k-heap, algorithm:rtree, algorithm:grid-hashing] }
+    - { name: "Weighting and scoring", what: "Decay, distance kernels, saturating scores.", status: strong, evidence: [algorithm:exponential-decay, algorithm:distance-weighting, algorithm:saturating-score] }
+    - { name: "Graphs", what: "Traversal for impact analysis.", status: strong, evidence: [algorithm:bfs-impact] }
+    - { name: "Statistics for sparse data", what: "Exposure, shrinkage, count models.", status: partial, evidence: [concept:risk-vs-counts, algorithm:empirical-bayes], gap: "Planned for Phase 2." }
+    - { name: "Machine learning and calibration", what: "Models whose numbers mean probabilities.", status: gap, evidence: [algorithm:gradient-boosting], gap: "Planned for Phase 4." }
+
+- id: evolution
+  order: 9
+  name: Evolution and governance
+  why: Systems change constantly; the architecture must make change safe.
+  topics:
+    - { name: "Fitness functions", what: "Automated checks for architecture rules.", status: strong, evidence: [pattern:fitness-function, tradeoff:la-verified-snippets] }
+    - { name: "CI/CD and branch protection", what: "Every change proven on a clean machine.", status: strong, evidence: [concept:continuous-integration, concept:git-and-github-flow] }
+    - { name: "Supply chain", what: "Pinned versions, verified downloads.", status: partial, evidence: [concept:reproducible-environments], gap: "No SBOM (Software Bill of Materials) yet." }
+    - { name: "Superseding decisions", what: "Changing your mind on the record.", status: strong, evidence: [decision:pv-0005, decision:pv-0007] }
+
+- id: operations
+  order: 10
+  name: Operations and observability
+  why: You can only run what you can see.
+  topics:
+    - { name: "Health checks", what: "Deep checks that exercise real dependencies.", status: strong, evidence: [walkthrough:rr-health] }
+    - { name: "Logging, metrics and traces", what: "Structured logs, measurements over time.", status: gap, gap: "Structured logging is a remaining Phase 0 task." }
+    - { name: "Service level objectives", what: "Targets for availability and latency.", status: gap, gap: "Not defined yet." }
+
+- id: security
+  order: 11
+  name: Security and privacy
+  why: Security is a quality attribute designed in, not added later.
+  topics:
+    - { name: "Information leakage", what: "Errors and logs that reveal nothing to callers.", status: strong, evidence: [pattern:central-error-handler, quality:rr-security] }
+    - { name: "Injection and input handling", what: "Parameters, validation, allow-lists.", status: strong, evidence: [pattern:parameterised-queries, pattern:dto] }
+    - { name: "Privacy by design", what: "Local-only data, guards at boundaries.", status: strong, evidence: [quality:pv-privacy, pattern:boundary-guard] }
+    - { name: "Threat modelling", what: "Systematically asking 'how could this be attacked?'", status: gap, gap: "No threat model written yet." }
+
+- id: communication
+  order: 12
+  name: Communicating architecture
+  why: An architecture nobody understands isn't followed.
+  topics:
+    - { name: "C4 diagrams", what: "Context → containers → components → code.", status: strong, evidence: [concept:modular-architecture] }
+    - { name: "Docs as code", what: "ADRs, devlogs and this site, versioned with the code.", status: strong, evidence: [concept:architecture-decision-records, concept:static-sites-and-content-as-data] }
+
+- id: ai
+  order: 13
+  name: AI-era architecture
+  why: LLMs and coding agents change both what systems contain and how they're built.
+  topics:
+    - { name: "Where an LLM belongs", what: "Language tasks yes, safety decisions no.", status: strong, evidence: [decision:rr-0001, concept:llm-where-and-where-not] }
+    - { name: "AI-assisted development", what: "Agents under rules, tests as contracts, review.", status: strong, evidence: [concept:ai-driven-development, concept:ai-code-review] }
+    - { name: "Evaluating AI", what: "Evals before fine-tuning; faithfulness checks.", status: partial, evidence: [decision:rr-0005], gap: "Eval sets are built in Phase 6." }
+    - { name: "RAG, agents and tool calling", what: "Grounding models in sources; letting them act through tools.", status: gap, gap: "Planned for Phase 6." }

@@ -38,7 +38,13 @@
         "docs/roadmap.md",
         "docs/project-status.md"
       ],
-      "code": "python"
+      "code": "python",
+      "extraCode": [
+        {
+          "dir": "viewer",
+          "lang": "typescript"
+        }
+      ]
     },
     {
       "id": "learning-app",

@@ -1,0 +1,244 @@
+# Design patterns actually used in the projects. `where` is checked against the code facts.
+
+- id: lazy-initialization
+  name: Lazy initialization with double-checked locking
+  category: concurrency
+  problem: >-
+    Opening a database connection is slow (about 56 ms here) and shouldn't happen when the app
+    merely imports the engine. But when several request threads need it at once, it must be
+    created exactly once.
+  solution: >-
+    Create the resource on first use. Check without the lock (fast path), then take a lock and
+    check again before creating, so two threads racing past the first check can't both create it.
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine._connection", what: "The one DuckDB connection is created on the first request, under a lock.", why: "Importing the API never touches the database, and concurrent requests share one connection.", stage: p0 }
+  tradeoff: A few lines of subtle code in exchange for fast startup and thread safety.
+  when_not: When creation is cheap, or always needed at startup. Then just create it eagerly.
+
+- id: gateway
+  name: Gateway (single point of access)
+  aka: Facade over infrastructure
+  category: structural
+  problem: >-
+    Every part of the app opened DuckDB its own way; one of them forgot to install the spatial
+    extension, and the deployed API broke on fresh servers.
+  solution: >-
+    One function is the only way to obtain a connection. It encodes all the rules (install
+    before load, read-only by default, a custom extension folder for tests).
+  uses:
+    - { project: road-risk, where: "src/core/db.py::connect_spatial", what: "Every connection in the app goes through this function.", why: "Fixing the extension bug here fixed it everywhere at once.", stage: p0 }
+  tradeoff: One more indirection; in return, one place to change and one place to test.
+  when_not: Never really. Even small projects benefit from one place for infrastructure access.
+
+- id: dto
+  name: Data Transfer Objects with validation
+  category: data
+  problem: Inputs from the outside world can be wrong in endless ways, and bad values travel deep before failing.
+  solution: >-
+    Describe the shape and the rules of the data as classes (here Pydantic models). Data is
+    validated when it enters, and the same classes document the API.
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::RiskQuery", what: "Latitude −90…90, radius >0 and ≤10,000 m, language en or fi.", why: "Invalid requests get a 422 before any query runs.", stage: p0 }
+    - { project: road-risk, where: "src/scoring/risk_engine.py::RiskProfile", what: "The response shape, including reference_year.", why: "Clients see exactly what they get; responses are reproducible.", stage: p0 }
+  tradeoff: Some duplication between models and storage; worth it for safety at the edge.
+  when_not: Inside a module, passing plain values between private functions.
+
+- id: central-error-handler
+  name: Central error handler
+  category: security
+  problem: Each endpoint handled errors differently, and one copied the raw exception text, including a file path, into its response.
+  solution: >-
+    One app-wide handler catches every unexpected error, logs the details server-side under a
+    short id, and returns only that id to the client.
+  uses:
+    - { project: road-risk, where: "src/api/main.py::unhandled_error", what: "Logs with exc_info; returns {detail, error_id}.", why: "New endpoints are covered automatically; a forgotten try can't reintroduce the leak.", stage: p0 }
+  tradeoff: Less detail for API callers, by design; operators read the log.
+  when_not: Expected, meaningful errors (like a 400 for an empty route). Those keep their own messages.
+
+- id: pipeline-quarantine
+  name: Pipeline with quarantine
+  aka: Dead-letter table
+  category: data
+  problem: Some raw rows can't be used (no coordinates). Dropping them silently hides data loss.
+  solution: Unusable rows go to a separate table with the reason, and every file's counts are logged.
+  uses:
+    - { project: road-risk, where: "src/ingestion/ingest_all.py::_ingest_accident_file", what: "Crashes without (or with unreadable) coordinates go to ingest_rejects.", why: "173 rejected crashes are counted and explained, not lost.", stage: p0 }
+  tradeoff: An extra table and a bit more code; in return, every loss is auditable.
+  when_not: Truly invalid junk that nobody will ever inspect. Even then, count it.
+
+- id: fail-fast
+  name: Fail fast on unknown input
+  category: reliability
+  problem: The data source changed its encoding twice; a new spelling silently mapped to NULL would corrupt the data unnoticed.
+  solution: Recognise only known values; for anything else, stop the build with a clear error.
+  uses:
+    - { project: road-risk, where: "src/ingestion/clean.py::heavy_vehicle", what: "on/true/kyllä → TRUE; anything unseen → error().", why: "A format change is noticed the day it arrives.", stage: p0 }
+    - { project: road-risk, where: "src/ingestion/clean.py::month", what: "1–12 or empty; anything else stops the build.", why: "An impossible month means the file changed shape.", stage: p0 }
+  tradeoff: The build can stop on new data until a rule is added, which is deliberate.
+  when_not: User-facing input where you should show a friendly message instead.
+
+- id: atomic-write
+  name: Atomic write (write, then rename)
+  category: reliability
+  problem: A crash halfway through writing a file leaves a half-written file where readers expect a complete one.
+  solution: Write to a temporary file next to the target, verify it, then rename it into place in one step.
+  uses:
+    - { project: road-risk, where: "src/ingestion/ingest_all.py::build_database", what: "Builds road_risk.duckdb.building, then os.replace().", why: "A failed build never replaces a good database.", stage: p0 }
+    - { project: road-risk, where: "src/core/dataset.py::fetch", what: "Downloads to .part, checks size and SHA-256, then renames.", why: "A cut-off download can't become the database.", stage: p0 }
+    - { project: project-viewer, where: "src/projectviewer/cache.py::Cache.put", what: "Writes a .tmp file named after the process, then os.replace().", why: "Parallel workers never read a half-written cache entry.", stage: p1 }
+  tradeoff: Needs space for two copies briefly; must be on the same filesystem for the rename to be atomic.
+  when_not: Append-only logs, where partial lines are tolerated.
+
+- id: verify-before-use
+  name: Verify before use (checksums and pins)
+  category: security
+  problem: A downloaded file might be corrupt, truncated or tampered with.
+  solution: Pin the expected size and SHA-256 in a lock file; refuse anything that doesn't match.
+  uses:
+    - { project: road-risk, where: "src/core/dataset.py::fetch", what: "Size check (incomplete), then checksum check (wrong file).", why: "The database the app opens is provably the published one.", stage: p0 }
+  tradeoff: Updating data needs a new lock entry, a deliberate step.
+  when_not: Data you produce and consume in the same process.
+
+- id: idempotency
+  name: Idempotent operations
+  category: reliability
+  problem: Build steps get re-run, so a step that does damage the second time is dangerous.
+  solution: Make doing it twice the same as doing it once.
+  uses:
+    - { project: road-risk, where: "src/core/dataset.py::fetch", what: "Returns 'up-to-date' and does nothing if the file already matches.", why: "Safe to run on every build and every CI job.", stage: p0 }
+  tradeoff: Needs a cheap way to check "already done" (here a checksum).
+  when_not: Operations that are meant to accumulate, like appending events.
+
+- id: parameterised-queries
+  name: Parameterised queries
+  category: security
+  problem: Building SQL by pasting values into the text breaks on quotes and enables injection.
+  solution: Write placeholders ($1, $2 …) in the SQL and pass the values separately.
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point", what: "A small param() helper numbers every value automatically.", why: "Even the winter-surface list is a parameter now; one quote can't break a query.", stage: p0 }
+  tradeoff: Slightly less readable SQL.
+  when_not: Never skip it for user values; only constant identifiers (table names) may be written directly.
+
+- id: shared-instance
+  name: Shared instance per process
+  aka: Memoised factory
+  category: creational
+  problem: The dashboard re-runs its script on every interaction; creating a new engine each time would reconnect every time.
+  solution: A factory function whose result is cached for the life of the process.
+  uses:
+    - { project: road-risk, where: "src/ui/app.py::get_engine", what: "@st.cache_resource returns the same SpatialRiskEngine on every rerun.", why: "One connection for the dashboard, like the API.", stage: p0 }
+  tradeoff: The instance lives as long as the process; it must be thread-safe.
+  when_not: Objects that hold per-user state.
+
+- id: content-addressed-cache
+  name: Content-addressed cache
+  aka: Memoisation by content hash
+  category: data
+  problem: Re-analysing every file after every save doesn't scale to large projects.
+  solution: Key each result by a hash of exactly what produced it (analyser version + path + content).
+  uses:
+    - { project: project-viewer, where: "src/projectviewer/cache.py::Cache.key", what: "sha256(version, path, bytes).", why: "Unchanged files are never parsed again; upgrading the analyser invalidates old results automatically.", stage: p1 }
+  tradeoff: The cache grows and needs cleanup; the cached step must be pure.
+  when_not: Results that depend on anything outside the hashed input.
+
+- id: pure-core-parallel
+  name: Pure functions for parallelism (with a serial fallback)
+  category: concurrency
+  problem: Parsing 1,440 files serially takes about 12 s.
+  solution: Make per-file work a pure function, so it can run in worker processes; fall back to serial when processes aren't available.
+  uses:
+    - { project: project-viewer, where: "src/projectviewer/analyzers/python/mapper.py::_analyse", what: "Cache hits first; misses parsed in parallel when there are at least 64.", why: "4.3 s instead of 11.9 s on pandas; small jobs avoid process start-up cost.", stage: p1 }
+  tradeoff: Processes cost start-up time and memory; hence the threshold.
+  when_not: Small inputs, or work that shares mutable state.
+
+- id: dirty-checking
+  name: Rebuild only when something changed (dirty checking)
+  category: data
+  problem: The browser polls for updates; re-mapping the project on every poll would waste seconds.
+  solution: Compute a cheap fingerprint (paths, modification times, sizes); rebuild only when it changes.
+  uses:
+    - { project: project-viewer, where: "src/projectviewer/server.py::Project.current", what: "Compares the fingerprint with the last version before re-mapping.", why: "Polling is nearly free when nothing changed.", stage: p2 }
+  tradeoff: Timestamps can lie (a file touched without changes triggers a rebuild); cheap enough to accept.
+  when_not: When a precise change signal (events) is available. Planned with Server-Sent Events.
+
+- id: conditional-get
+  name: Conditional requests (ETag)
+  category: integration
+  problem: Sending the full world JSON on every poll wastes bandwidth.
+  solution: Tag each response with a version (ETag); if the client already has it, answer 304 Not Modified with no body.
+  uses:
+    - { project: project-viewer, where: "src/projectviewer/server.py", what: "If-None-Match equal to the current version → 304.", why: "Polling costs almost nothing when the code hasn't changed.", stage: p2 }
+  tradeoff: The server must compute a stable version cheaply (the fingerprint does).
+  when_not: Responses that change on every request.
+
+- id: fail-safe-integration
+  name: Fail-safe integration (timeout + swallow + exit 0)
+  category: reliability
+  problem: A hook that hangs or errors could slow down or block the AI agent it observes.
+  solution: A short timeout, catch every error, print nothing, always report success.
+  uses:
+    - { project: project-viewer, where: "src/projectviewer/hook.py::send", what: "0.3 s timeout; any exception is ignored.", why: "The viewer being closed never affects the agent.", stage: p4 }
+    - { project: project-viewer, where: "src/projectviewer/hook.py::main", what: "Catches even SystemExit; always returns 0.", why: "An exit code of 2 would block Claude Code.", stage: p4 }
+  tradeoff: Lost events when the viewer is down, accepted for an observer.
+  when_not: When the integration is the main job and failures must be visible.
+
+- id: registry
+  name: Registry
+  category: structural
+  problem: The viewer must know which projects exist, across restarts.
+  solution: A small persistent list with add, remove and load operations and stable ids.
+  uses:
+    - { project: project-viewer, where: "src/projectviewer/registry.py::add", what: "Adds a project with a unique id to ~/.config/projectviewer/projects.json.", why: "Several projects in one viewer, without configuration files in each repo.", stage: p4 }
+  tradeoff: A file to keep in sync with reality (a deleted repo stays listed).
+  when_not: When discovery is cheap and reliable enough to do every time.
+
+- id: container-presentational
+  name: Container and presentational components
+  category: ui
+  problem: Mixing data loading with interface code makes both harder to change and test.
+  solution: Containers load data (here at build time); presentational components only render what they're given.
+  uses:
+    - { project: learning-app, where: "src/components/Decisions.astro", what: "Loads decision cards and record links, passes them to DecisionExplorer.", why: "The React island never knows where data comes from.", stage: L1 }
+  tradeoff: More files; clear responsibilities.
+  when_not: Tiny components where the split adds nothing.
+
+- id: graceful-degradation
+  name: Graceful degradation
+  category: reliability
+  problem: Browser storage can be unavailable (private mode, blocked site data).
+  solution: Wrap every access; the page works without the feature that failed.
+  uses:
+    - { project: learning-app, where: "src/components/DecisionExplorer.tsx::load", what: "try/catch around localStorage; an empty start if it fails.", why: "Decision cards always work; only saving picks is lost.", stage: L1 }
+  tradeoff: Silent loss of a convenience feature.
+  when_not: "Data that must not be lost: use a server instead."
+
+- id: single-source-of-truth
+  name: Single source of truth
+  category: architecture
+  problem: When the same fact lives in two places, the copies drift apart.
+  solution: Define each fact once and derive everything else from it.
+  uses:
+    - { project: learning-app, where: "src/lib/acronyms.mjs::splitAcronyms", what: "One acronym list drives page text and every interactive card.", why: "An acronym added once is explained everywhere.", stage: L2 }
+    - { project: road-risk, where: "src/ingestion/clean.py::text", what: "Each cleaning rule is written once in SQL and used for both file formats.", why: "Two copies of a rule would drift apart.", stage: p0 }
+  tradeoff: Requires a mechanism to derive copies (a build step, a shared module).
+  when_not: Deliberate denormalisation for performance, documented as such.
+
+- id: fitness-function
+  name: Architecture fitness function
+  category: testing
+  problem: Architecture rules ("explain every tool", "paths point at the right folder") are forgotten under pressure.
+  solution: Encode the rule as an automated check that fails the build.
+  uses:
+    - { project: learning-app, where: "scripts/check-coverage.mjs", what: "Fails on unexplained tools, ADRs, endpoints or stale code snippets.", why: "A gap is a red build, not a forgotten task.", stage: L1 }
+  tradeoff: Rules must be precise enough to check automatically.
+  when_not: Matters of taste that need human judgement.
+
+- id: boundary-guard
+  name: Guard at the boundary
+  category: security
+  problem: Bulk imports from other repositories can carry private details nobody reads line by line.
+  solution: Check data where it crosses into the public site, and refuse it loudly.
+  uses:
+    - { project: learning-app, where: "scripts/sync-sources.mjs::guard", what: "Rejects home-directory paths and email addresses (reserved example domains allowed).", why: "It caught a test email in projectViewer on its first run.", stage: L1 }
+  tradeoff: Pattern checks can't catch everything; review still matters.
+  when_not: Data that never leaves a trusted boundary.

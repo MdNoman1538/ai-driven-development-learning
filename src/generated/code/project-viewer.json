@@ -119,6 +119,48 @@
    "doc": "The local viewer server: several projects, world API, live version, source, changes, static files.",
    "loc": 182,
    "source": "\"\"\"The local viewer server: several projects, world API, live version, source, changes, static files.\"\"\"\n\nimport gzip\nimport json\nimport subprocess\nimport threading\nimport time\nimport urllib.error\nimport urllib.parse\nimport urllib.request\n\nimport pytest\n\nfrom projectviewer.server import make_server\n\n\ndef get(url, headers=None):\n    req = urllib.request.Request(url, headers=headers or {})\n    with urllib.request.urlopen(req, timeout=20) as r:\n        return r.status, dict(r.headers), r.read()\n\n\ndef getj(url):\n    return json.loads(get(url)[2])\n\n\ndef start(roots, web):\n    srv = make_server(roots, port=0, web_dir=web)\n    threading.Thread(target=srv.serve_forever, daemon=True).start()\n    return srv, f\"http://127.0.0.1:{srv.server_address[1]}\"\n\n\n@pytest.fixture\ndef two_projects(tmp_path):\n    shop = tmp_path / \"shop\"\n    (shop / \"shop\").mkdir(parents=True)\n    (shop / \"shop/__init__.py\").write_text(\"\")\n    (shop / \"shop/orders.py\").write_text(\"def total():\\n    return 1\\n\")\n    lib = tmp_path / \"library\"\n    (lib / \"books\").mkdir(parents=True)\n    (lib / \"books/loans.py\").write_text(\"def lend():\\n    pass\\n\")\n    web = tmp_path / \"web\"\n    web.mkdir()\n    (web / \"index.html\").write_text(\"<html>viewer</html>\")\n    srv, base = start([shop, lib], web)\n    yield base, shop, lib\n    srv.shutdown()\n    srv.server_close()\n\n\ndef test_projects_are_listed_with_ids_and_activity(two_projects):\n    base, shop, lib = two_projects\n    projects = getj(base + \"/api/projects\")\n    assert [p[\"id\"] for p in projects] == [\"shop\", \"library\"]\n    assert projects[0][\"path\"] == str(shop.resolve())\n    assert all(p[\"last_change\"] > 0 and p[\"version\"] for p in projects)\n\n\ndef test_each_project_has_its_own_world(two_projects):\n    base, _, _ = two_projects\n    shop = getj(base + \"/api/p/shop/world\")\n    lib = getj(base + \"/api/p/library/world\")\n    assert \"py:shop.orders.total\" in {n[\"id\"] for n in shop[\"nodes\"]}\n    assert \"py:books.loans.lend\" in {n[\"id\"] for n in lib[\"nodes\"]}\n\n\ndef test_unknown_project_is_404(two_projects):\n    base, _, _ = two_projects\n    with pytest.raises(urllib.error.HTTPError) as e:\n        get(base + \"/api/p/nope/world\")\n    assert e.value.code == 404\n\n\ndef test_world_is_gzipped_and_cached_with_etag(two_projects):\n    base, _, _ = two_projects\n    _, headers, body = get(base + \"/api/p/shop/world\", {\"Accept-Encoding\": \"gzip\"})\n    assert headers.get(\"Content-Encoding\") == \"gzip\"\n    assert json.loads(gzip.decompress(body))[\"schema\"] == \"project-world/1\"\n    with pytest.raises(urllib.error.HTTPError) as e:\n        get(base + \"/api/p/shop/world\", {\"If-None-Match\": headers[\"ETag\"]})\n    assert e.value.code == 304\n\n\ndef test_activity_follows_the_project_that_changed(two_projects):\n    base, shop, _ = two_projects\n    before = {p[\"id\"]: p for p in getj(base + \"/api/projects\")}\n    time.sleep(0.02)\n    (shop / \"shop/orders.py\").write_text(\"def total():\\n    return 2\\n\\ndef tax():\\n    return 0\\n\")\n    after = {p[\"id\"]: p for p in getj(base + \"/api/projects\")}\n    assert after[\"shop\"][\"version\"] != before[\"shop\"][\"version\"]\n    assert after[\"shop\"][\"last_change\"] > before[\"shop\"][\"last_change\"]\n    assert after[\"library\"][\"version\"] == before[\"library\"][\"version\"]\n    world = getj(base + \"/api/p/shop/world\")\n    assert world[\"version\"] == after[\"shop\"][\"version\"]\n    assert \"py:shop.orders.tax\" in {n[\"id\"] for n in world[\"nodes\"]}\n\n\ndef test_source_returns_lines_of_a_project_file(two_projects):\n    base, _, _ = two_projects\n    assert getj(base + \"/api/p/shop/source?file=shop/orders.py\")[\"lines\"][0] == \"def total():\"\n\n\n@pytest.mark.parametrize(\n    \"bad\", [\"../etc/passwd\", \"/etc/passwd\", \"shop/../../secret.py\", \"nope.py\", \"books/loans.py\"]\n)\ndef test_source_refuses_anything_outside_the_projects_files(two_projects, bad):\n    base, _, _ = two_projects\n    with pytest.raises(urllib.error.HTTPError) as e:\n        get(base + \"/api/p/shop/source?file=\" + urllib.parse.quote(bad))\n    assert e.value.code == 404\n\n\ndef test_changes_commits_and_diff(two_projects):\n    base, shop, _ = two_projects\n\n    def git(*a):\n        subprocess.run(\n            [\"git\", \"-C\", str(shop), \"-c\", \"user.name=T\", \"-c\", \"user.email=t@example.com\", *a],\n            check=True,\n            capture_output=True,\n        )\n\n    git(\"init\", \"-q\", \"-b\", \"main\")\n    git(\"add\", \"-A\")\n    git(\"commit\", \"-q\", \"-m\", \"feat: orders\\n\\nChanges:\\n- shop/orders.py::total: new. Order total.\")\n    commits = getj(base + \"/api/p/shop/commits\")\n    assert commits[0][\"subject\"] == \"feat: orders\" and commits[0][\"notes\"] == 1\n    cs = getj(base + f\"/api/p/shop/changes?ref={commits[0]['sha']}\")\n    assert cs[\"changed\"][\"py:shop.orders.total\"] == \"new\"\n    assert cs[\"notes\"][0][\"node\"] == \"py:shop.orders.total\"\n    (shop / \"shop/orders.py\").write_text(\"def total():\\n    return 3\\n\")\n    live = getj(base + \"/api/p/shop/changes?ref=working\")\n    assert live[\"changed\"][\"py:shop.orders.total\"] == \"modified\"\n    patch = getj(base + \"/api/p/shop/diff?ref=working&file=shop/orders.py\")[\"diff\"]\n    assert \"-    return 1\" in patch and \"+    return 3\" in patch\n\n\n@pytest.mark.parametrize(\"ref\", [\"--output=/tmp/x\", \"HEAD;rm\", \"../x\", \"\"])\ndef test_changes_refuse_odd_refs(two_projects, ref):\n    base, _, _ = two_projects\n    with pytest.raises(urllib.error.HTTPError) as e:\n        get(base + \"/api/p/shop/changes?ref=\" + urllib.parse.quote(ref))\n    assert e.value.code == 400\n\n\ndef test_static_files_and_spa_fallback(two_projects):\n    base, _, _ = two_projects\n    assert get(base + \"/\")[2] == b\"<html>viewer</html>\"\n    assert get(base + \"/some/client/route\")[2] == b\"<html>viewer</html>\"\n\n\ndef test_missing_viewer_build_shows_instructions(tmp_path):\n    (tmp_path / \"a.py\").write_text(\"\")\n    srv, base = start([tmp_path], tmp_path / \"does-not-exist\")\n    try:\n        assert \"npm run build\" in get(base + \"/\")[2].decode()\n    finally:\n        srv.shutdown()\n        srv.server_close()\n\n\ndef test_binds_to_localhost_only(tmp_path):\n    srv = make_server([tmp_path], port=0, web_dir=tmp_path)\n    try:\n        assert srv.server_address[0] == \"127.0.0.1\"\n    finally:\n        srv.server_close()\n\n\ndef test_registry_add_list_remove(tmp_path, monkeypatch):\n    from projectviewer import registry\n\n    monkeypatch.setenv(\"XDG_CONFIG_HOME\", str(tmp_path / \"cfg\"))\n    (tmp_path / \"a\").mkdir()\n    (tmp_path / \"b\").mkdir()\n    assert registry.add(tmp_path / \"a\")[\"id\"] == \"a\"\n    assert registry.add(tmp_path / \"a\")[\"id\"] == \"a\"  # adding twice is harmless\n    registry.add(tmp_path / \"b\")\n    assert [p[\"id\"] for p in registry.load()] == [\"a\", \"b\"]\n    assert registry.remove(\"a\") is True\n    assert [p[\"id\"] for p in registry.load()] == [\"b\"]\n"
+  },
+  {
+   "path": "viewer/src/colors.js",
+   "doc": "One place for every colour on the map (RGB arrays for deck.gl).",
+   "loc": 34,
+   "source": "// One place for every colour on the map (RGB arrays for deck.gl).\n\nexport const KIND = {\n  root: [40, 52, 76],\n  folder: [58, 80, 116],\n  database: [34, 118, 106],\n  file: [70, 94, 134],\n  class: [64, 104, 142],\n  function: [86, 112, 156],\n  script: [102, 88, 138],\n  endpoint: [52, 98, 184],\n  table: [34, 118, 106],\n  test: [46, 98, 74],\n};\n\nexport const GROUND = [20, 29, 44];\nexport const SEL = [133, 183, 235];\nexport const OUT = [104, 168, 255]; // what the selection uses\nexport const IN = [240, 168, 80]; // what uses the selection\nexport const GOOD = [70, 150, 92];\nexport const OK = [62, 116, 82];\nexport const AMBER = [172, 132, 58];\nexport const BAD = [160, 74, 70];\nexport const TEAL = [44, 172, 150];\nexport const BLUE = [74, 132, 238];\nexport const TEXT = [232, 239, 250];\nexport const TEXT_DIM = [150, 166, 196];\n\nexport const CERTAINTY_ALPHA = { proven: 235, inferred: 165, pattern: 120 };\n\nexport const mix = (a, b, t) => [0, 1, 2].map((i) => Math.round(a[i] * (1 - t) + b[i] * t));\nexport const dim = (c, f = 0.5) => [c[0] * f, c[1] * f, c[2] * f];\nexport const css = (c) => `rgb(${c.join(\",\")})`;\n"
+  },
+  {
+   "path": "viewer/src/layout.js",
+   "doc": "Layout of ONE level of the folder tree: the children of the current focus become blocks on a\nground plane, separated by \"streets\". Size = number of functions inside (lines of code when every\nblock on the level is a single function). Footprint grows gently with size, so small things stay\nclickable; height grows with size relative to the biggest sibling (bigger = clearly taller).",
+   "loc": 90,
+   "source": "// Layout of ONE level of the folder tree: the children of the current focus become blocks on a\n// ground plane, separated by \"streets\". Size = number of functions inside (lines of code when every\n// block on the level is a single function). Footprint grows gently with size, so small things stay\n// clickable; height grows with size relative to the biggest sibling (bigger = clearly taller).\nimport { hierarchy, treemap, treemapSquarify } from \"d3-hierarchy\";\n\nexport const WIDTH = 1000;\nexport const HEIGHT = 640;\nconst STREET = 22; // gap between blocks\nconst MIN_H = 12;\nconst MAX_H = 170;\n\nexport function layoutLevel(focus) {\n  const kids = focus?.children || [];\n  const rects = new Map();\n  if (!kids.length) return { blocks: [], rects, width: WIDTH, height: HEIGHT, zTop: 0 };\n  const byFunctions = Math.max(...kids.map((k) => k.stats.fn)) > 1;\n  const size = (t) => Math.max(byFunctions ? 0.5 : 1, byFunctions ? t.stats.fn : t.stats.loc);\n  const maxSize = Math.max(1, ...kids.map(size));\n\n  const root = hierarchy({ children: kids.map((t) => ({ t })) })\n    .sum((d) => (d.t ? 2 + 3 * Math.sqrt(size(d.t)) : 0))\n    .sort((a, b) => b.value - a.value || (a.data.t?.id < b.data.t?.id ? -1 : 1));\n  treemap().tile(treemapSquarify.ratio(1.4)).size([WIDTH, HEIGHT]).paddingInner(STREET).paddingOuter(STREET).round(false)(root);\n\n  const blocks = root.leaves().map((d) => {\n    const t = d.data.t;\n    const b = { id: t.id, t, x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, z0: 0, h: MIN_H + (MAX_H - MIN_H) * Math.sqrt(size(t) / maxSize) };\n    b.zTop = b.h;\n    rects.set(b.id, b);\n    return b;\n  });\n  return { blocks, rects, width: WIDTH, height: HEIGHT, zTop: Math.max(...blocks.map((b) => b.h)), measure: byFunctions ? \"functions\" : \"lines\" };\n}\n\n// The roof of a block, divided into its children (one level deep): shows how a module is organised\n// without opening it. Area follows the same size measure as the blocks. No division for 0–1 children.\nexport function roofTiles(block, inset = 4, gap = 2.5) {\n  const kids = block.t.children;\n  if (kids.length < 2) return [];\n  const w = block.x1 - block.x0 - 2 * inset;\n  const h = block.y1 - block.y0 - 2 * inset;\n  if (w <= 4 || h <= 4) return [];\n  const byFunctions = Math.max(...kids.map((k) => k.stats.fn)) > 1;\n  const root = hierarchy({ children: kids.map((t) => ({ t })) })\n    .sum((d) => (d.t ? Math.max(0.6, byFunctions ? d.t.stats.fn : Math.sqrt(d.t.stats.loc)) : 0))\n    .sort((a, b) => b.value - a.value || (a.data.t?.id < b.data.t?.id ? -1 : 1));\n  treemap().tile(treemapSquarify.ratio(1.3)).size([w, h]).paddingInner(gap).round(false)(root);\n  const x = block.x0 + inset;\n  const y = block.y0 + inset;\n  return root.leaves().map((d) => ({ id: d.data.t.id, t: d.data.t, parent: block.id, x0: x + d.x0, y0: y + d.y0, x1: x + d.x1, y1: y + d.y1, z: block.h }));\n}\n\nexport const centre = (r) => [(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2];\n\n// Curved link between two points (quadratic Bézier), as a polyline for deck.gl's PathLayer.\nexport function curve(a, b, bend = 0.18, steps = 18) {\n  const [x0, y0] = a;\n  const [x1, y1] = b;\n  const cx = (x0 + x1) / 2 - (y1 - y0) * bend;\n  const cy = (y0 + y1) / 2 + (x1 - x0) * bend;\n  const pts = [];\n  for (let i = 0; i <= steps; i++) {\n    const t = i / steps;\n    const u = 1 - t;\n    pts.push([u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y0 + 2 * u * t * cy + t * t * y1]);\n  }\n  return pts;\n}\n\n// Arc between two block tops, lifted in the middle in proportion to its length.\nexport function curve3d(a, b, lift = 0.22, steps = 20) {\n  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);\n  const pts = [];\n  for (let i = 0; i <= steps; i++) {\n    const t = i / steps;\n    pts.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t + Math.sin(Math.PI * t) * len * lift]);\n  }\n  pts[steps] = [...b];\n  return pts;\n}\n\n// Camera that fits a rectangle into a viewport of (width x height) pixels (flat map).\nexport function fit(r, width, height, margin = 1.12) {\n  const w = Math.max(1, r.x1 - r.x0);\n  const h = Math.max(1, r.y1 - r.y0);\n  const zoom = Math.log2(Math.min(width / (w * margin), height / (h * margin)));\n  return { target: [(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, 0], zoom: Math.max(-4, Math.min(9, zoom)) };\n}\n"
+  },
+  {
+   "path": "viewer/src/model.js",
+   "doc": "The world as an index: lookups, test reach, links for a selection, group-level overview links.\nPure functions (no React, no DOM), unit-tested with `npm test`.",
+   "loc": 130,
+   "source": "// The world as an index: lookups, test reach, links for a selection, group-level overview links.\n// Pure functions (no React, no DOM), unit-tested with `npm test`.\n\nconst CALLISH = new Set([\"calls\", \"instantiates\"]);\n\nfunction push(map, key, value) {\n  if (!map.has(key)) map.set(key, []);\n  map.get(key).push(value);\n}\n\nexport function indexWorld(world) {\n  const byId = new Map();\n  const kids = new Map();\n  const out = new Map();\n  const inn = new Map();\n  for (const n of world.nodes) byId.set(n.id, n);\n  for (const n of world.nodes) push(kids, n.parent ?? null, n);\n  for (const e of world.edges) {\n    push(out, e.source, e);\n    push(inn, e.target, e);\n  }\n\n  // Which code do the tests reach? Direct = called by a test, or the handler of an endpoint a test\n  // requests over HTTP; reach = within 4 calls of that.\n  const testedDirect = new Set();\n  for (const n of world.nodes) {\n    if (!n.attrs?.is_test) continue;\n    for (const e of out.get(n.id) || []) {\n      if (CALLISH.has(e.kind)) testedDirect.add(e.target);\n      if (e.kind === \"requests\") for (const r of out.get(e.target) || []) if (r.kind === \"routes\") testedDirect.add(r.target);\n    }\n  }\n  const testedReach = new Set(testedDirect);\n  let frontier = [...testedDirect];\n  for (let hop = 0; hop < 4 && frontier.length; hop++) {\n    const next = [];\n    for (const id of frontier)\n      for (const e of out.get(id) || [])\n        if (CALLISH.has(e.kind) && !testedReach.has(e.target)) {\n          testedReach.add(e.target);\n          next.push(e.target);\n        }\n    frontier = next;\n  }\n\n  return { world, nodes: world.nodes, edges: world.edges, byId, kids, out, inn, testedDirect, testedReach };\n}\n\nexport function children(ix, id) {\n  return ix.kids.get(id) || [];\n}\n\nexport function descendants(ix, id) {\n  const res = [];\n  const stack = [id];\n  while (stack.length) {\n    for (const k of children(ix, stack.pop())) {\n      res.push(k.id);\n      stack.push(k.id);\n    }\n  }\n  return res;\n}\n\nexport function ancestors(ix, id) {\n  const res = [];\n  let n = ix.byId.get(id);\n  while (n && n.parent) {\n    res.unshift(n.parent);\n    n = ix.byId.get(n.parent);\n  }\n  return res;\n}\n\n// Links between the selected thing (including everything inside it) and the rest of the world.\nexport function linksFor(ix, selId, max = 600) {\n  const inside = new Set([selId, ...descendants(ix, selId)]);\n  const res = [];\n  for (const id of inside) {\n    for (const e of ix.out.get(id) || []) if (!inside.has(e.target)) res.push({ e, dir: \"out\" });\n    for (const e of ix.inn.get(id) || []) if (!inside.has(e.source)) res.push({ e, dir: \"in\" });\n    if (res.length >= max) break;\n  }\n  return { inside, links: res.slice(0, max) };\n}\n\n// Overview: how the top-level groups depend on each other (calls, instantiation, data access).\nexport function groupLinks(ix, kinds = [\"calls\", \"instantiates\", \"reads\", \"writes\"]) {\n  const want = new Set(kinds);\n  const pairs = new Map();\n  for (const e of ix.edges) {\n    if (!want.has(e.kind)) continue;\n    const s = ix.byId.get(e.source);\n    const t = ix.byId.get(e.target);\n    if (!s || !t || s.group === t.group) continue;\n    const key = `group:${s.group}\\u0000group:${t.group}`;\n    pairs.set(key, (pairs.get(key) || 0) + e.count);\n  }\n  return [...pairs.entries()].map(([k, count]) => {\n    const [source, target] = k.split(\"\\u0000\");\n    return { source, target, count };\n  });\n}\n\n// Short human name: methods get their class, scripts their file.\nexport function displayName(ix, n) {\n  if (!n) return \"?\";\n  if (n.kind === \"script\") return `${n.file} (top level)`;\n  if (n.kind === \"function\") {\n    const p = ix.byId.get(n.parent);\n    return p && p.kind === \"class\" ? `${p.name}.${n.name}()` : `${n.name}()`;\n  }\n  return n.name;\n}\n\nexport function search(ix, query, limit = 12) {\n  const q = query.trim().toLowerCase();\n  if (!q) return [];\n  const rank = { function: 0, class: 1, endpoint: 2, table: 3, file: 4, group: 5, script: 6 };\n  return ix.nodes\n    .filter((n) => n.name.toLowerCase().includes(q) || (n.kind === \"file\" && n.file.toLowerCase().includes(q)))\n    .sort(\n      (a, b) =>\n        (a.name.toLowerCase() === q ? -1 : 0) - (b.name.toLowerCase() === q ? -1 : 0) ||\n        (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9) ||\n        a.name.length - b.name.length,\n    )\n    .slice(0, limit);\n}\n"
+  },
+  {
+   "path": "viewer/src/model.test.js",
+   "doc": "Unit tests for the viewer's pure logic. Run: npm test  (Node's built-in test runner)",
+   "loc": 93,
+   "source": "// Unit tests for the viewer's pure logic. Run: npm test  (Node's built-in test runner)\nimport assert from \"node:assert/strict\";\nimport { test } from \"node:test\";\nimport { curve, curve3d, fit } from \"./layout.js\";\nimport { ancestors, descendants, groupLinks, indexWorld, linksFor, search } from \"./model.js\";\n\nconst node = (id, kind, name, parent, group, attrs = {}) => ({ id, kind, name, parent, group, file: \"x.py\", line: 1, end_line: 5, attrs });\nconst edge = (source, target, kind = \"calls\") => ({ source, target, kind, certainty: \"proven\", count: 1 });\n\nconst world = {\n  nodes: [\n    node(\"group:shop\", \"group\", \"shop\", null, \"shop\"),\n    node(\"group:tests\", \"group\", \"tests\", null, \"tests\"),\n    node(\"file:shop/a.py\", \"file\", \"a.py\", \"group:shop\", \"shop\", { loc: 40 }),\n    node(\"py:shop.a.Cart\", \"class\", \"Cart\", \"file:shop/a.py\", \"shop\"),\n    node(\"py:shop.a.Cart.total\", \"function\", \"total\", \"py:shop.a.Cart\", \"shop\", { loc: 10 }),\n    node(\"py:shop.a.helper\", \"function\", \"helper\", \"file:shop/a.py\", \"shop\", { loc: 5 }),\n    node(\"py:shop.a.deep\", \"function\", \"deep\", \"file:shop/a.py\", \"shop\", { loc: 5 }),\n    node(\"file:tests/t.py\", \"file\", \"t.py\", \"group:tests\", \"tests\", { loc: 10 }),\n    node(\"py:tests.t.test_total\", \"function\", \"test_total\", \"file:tests/t.py\", \"tests\", { loc: 3, is_test: true }),\n  ],\n  edges: [\n    edge(\"py:tests.t.test_total\", \"py:shop.a.Cart.total\"),\n    edge(\"py:shop.a.Cart.total\", \"py:shop.a.helper\"),\n    edge(\"py:shop.a.helper\", \"py:shop.a.deep\"),\n  ],\n};\n\ntest(\"index: hierarchy and lookups\", () => {\n  const ix = indexWorld(world);\n  assert.deepEqual(ancestors(ix, \"py:shop.a.Cart.total\"), [\"group:shop\", \"file:shop/a.py\", \"py:shop.a.Cart\"]);\n  assert.ok(descendants(ix, \"group:shop\").includes(\"py:shop.a.Cart.total\"));\n});\n\ntest(\"test reach: direct vs indirect\", () => {\n  const ix = indexWorld(world);\n  assert.ok(ix.testedDirect.has(\"py:shop.a.Cart.total\"));\n  assert.ok(!ix.testedDirect.has(\"py:shop.a.helper\"));\n  assert.ok(ix.testedReach.has(\"py:shop.a.deep\"));\n});\n\ntest(\"links of a container only cross its boundary\", () => {\n  const ix = indexWorld(world);\n  const { links } = linksFor(ix, \"file:shop/a.py\");\n  assert.deepEqual(\n    links.map((l) => [l.e.source, l.dir]),\n    [[\"py:tests.t.test_total\", \"in\"]],\n  );\n});\n\ntest(\"group overview aggregates cross-group links\", () => {\n  const ix = indexWorld(world);\n  assert.deepEqual(groupLinks(ix), [{ source: \"group:tests\", target: \"group:shop\", count: 1 }]);\n});\n\ntest(\"search ranks exact names and functions first\", () => {\n  const ix = indexWorld(world);\n  assert.equal(search(ix, \"total\")[0].id, \"py:shop.a.Cart.total\");\n});\n\ntest(\"curve starts and ends at the endpoints; fit centres the box\", () => {\n  const pts = curve([0, 0], [10, 0]);\n  assert.deepEqual(pts[0], [0, 0]);\n  assert.deepEqual(pts.at(-1), [10, 0]);\n  const v = fit({ x0: 0, y0: 0, x1: 100, y1: 50 }, 1000, 500);\n  assert.deepEqual(v.target, [50, 25, 0]);\n});\n\ntest(\"3D curve lifts in the middle and ends on the targets\", () => {\n  const pts = curve3d([0, 0, 10], [100, 0, 20]);\n  assert.deepEqual(pts[0], [0, 0, 10]);\n  assert.deepEqual(pts.at(-1), [100, 0, 20]);\n  assert.ok(pts[Math.floor(pts.length / 2)][2] > 20);\n});\n\ntest(\"tests that call an API over HTTP reach the endpoint's handler directly\", () => {\n  const ix = indexWorld({\n    nodes: [\n      { id: \"py:t.test_api\", kind: \"function\", name: \"test_api\", parent: null, attrs: { is_test: true } },\n      { id: \"endpoint:GET /x\", kind: \"endpoint\", name: \"GET /x\", parent: null, attrs: {} },\n      { id: \"py:api.handler\", kind: \"function\", name: \"handler\", parent: null, attrs: {} },\n      { id: \"py:core.work\", kind: \"function\", name: \"work\", parent: null, attrs: {} },\n    ],\n    edges: [\n      { source: \"py:t.test_api\", target: \"endpoint:GET /x\", kind: \"requests\", certainty: \"pattern\", count: 1 },\n      { source: \"endpoint:GET /x\", target: \"py:api.handler\", kind: \"routes\", certainty: \"proven\", count: 1 },\n      { source: \"py:api.handler\", target: \"py:core.work\", kind: \"calls\", certainty: \"proven\", count: 1 },\n    ],\n  });\n  assert.ok(ix.testedDirect.has(\"py:api.handler\"));\n  assert.ok(ix.testedReach.has(\"py:core.work\"));\n});\n"
+  },
+  {
+   "path": "viewer/src/tree.js",
+   "doc": "The project as a FOLDER tree: root › folders › files › classes › functions (+ a Database block for\ntables). The map shows one level of it at a time. Pure logic, unit-tested with `npm test`.",
+   "loc": 169,
+   "source": "// The project as a FOLDER tree: root › folders › files › classes › functions (+ a Database block for\n// tables). The map shows one level of it at a time. Pure logic, unit-tested with `npm test`.\n\nconst CALLISH = new Set([\"calls\", \"instantiates\"]);\nconst DATA = new Set([\"reads\", \"writes\"]);\n// Folders that only package code (src-layout) carry no meaning of their own: their contents are\n// shown as top-level modules.\nconst TRANSPARENT_ROOTS = new Set([\"src\"]);\nconst EMPTY = () => ({ fn: 0, loc: 0, folders: 0, files: 0, testFiles: 0, classes: 0, functions: 0, tests: 0, endpoints: 0, tables: 0, tested: 0, data: 0 });\n\nexport function buildTree(ix, rootName = \"project\") {\n  const T = new Map();\n  const add = (id, kind, name, parent, n = null, path = \"\") => {\n    const t = { id, kind, name, parent, children: [], n, path, stats: EMPTY() };\n    T.set(id, t);\n    if (parent) T.get(parent).children.push(t);\n    return t;\n  };\n  const root = add(\"root\", \"root\", rootName, null);\n\n  // folders and files, from the file paths\n  for (const n of ix.nodes) {\n    if (n.kind !== \"file\") continue;\n    let parent = \"root\";\n    let acc = \"\";\n    const dirs = n.file.split(\"/\").slice(0, -1);\n    dirs.forEach((part, i) => {\n      acc = acc ? `${acc}/${part}` : part;\n      if (i === 0 && TRANSPARENT_ROOTS.has(part)) return;\n      const id = `dir:${acc}`;\n      if (!T.has(id)) add(id, \"folder\", part, parent, null, acc);\n      parent = id;\n    });\n    add(n.id, \"file\", n.name, parent, n, n.file);\n  }\n  const tables = ix.nodes.filter((n) => n.kind === \"table\");\n  if (tables.length) {\n    add(\"db\", \"database\", \"Database\", \"root\");\n    for (const n of tables) add(n.id, \"table\", n.name, \"db\", n);\n  }\n  // code inside files and classes (a parent always exists before its children are placed)\n  let pending = ix.nodes.filter((n) => n.kind === \"class\" || n.kind === \"function\" || n.kind === \"script\" || n.kind === \"endpoint\");\n  while (pending.length) {\n    const next = [];\n    for (const n of pending) {\n      if (T.has(n.parent)) add(n.id, n.kind, n.kind === \"script\" ? \"top-level code\" : n.name, n.parent, n, n.file);\n      else next.push(n);\n    }\n    if (next.length === pending.length) break; // orphans: skip rather than loop forever\n    pending = next;\n  }\n\n  const touchesData = (id) => (ix.out.get(id) || []).some((e) => DATA.has(e.kind));\n  const visit = (t) => {\n    const s = t.stats;\n    for (const c of t.children) {\n      visit(c);\n      for (const k of Object.keys(s)) s[k] += c.stats[k];\n    }\n    const n = t.n;\n    if (t.kind === \"folder\") s.folders += 1;\n    else if (t.kind === \"file\") {\n      s.files += 1;\n      if (n.attrs?.is_test) s.testFiles += 1;\n      s.loc = n.attrs?.loc || s.loc; // the whole file, not only the code inside definitions\n    } else if (t.kind === \"class\") {\n      s.classes += 1;\n      s.loc = Math.max(s.loc, n.end_line && n.line ? n.end_line - n.line + 1 : 1);\n    } else if (t.kind === \"function\") {\n      s.fn += 1;\n      if (n.attrs?.is_test) s.tests += 1;\n      else {\n        s.functions += 1;\n        if (ix.testedReach.has(n.id)) s.tested += 1;\n      }\n      if (touchesData(n.id)) s.data += 1;\n      s.loc = n.attrs?.loc || 1;\n    } else if (t.kind === \"script\") {\n      if (touchesData(n.id)) s.data += 1;\n      s.loc = n.attrs?.loc || 1;\n    } else if (t.kind === \"endpoint\") {\n      s.endpoints += 1;\n      s.loc = 1;\n    } else if (t.kind === \"table\") {\n      s.tables += 1;\n    }\n    t.isTest = t.kind === \"function\" ? !!n.attrs?.is_test : s.files > 0 && s.testFiles === s.files;\n  };\n  visit(root);\n  return { T, root };\n}\n\nexport function treeAncestors(tree, id) {\n  const res = [];\n  let t = tree.T.get(id);\n  while (t && t.parent) {\n    res.unshift(t.parent);\n    t = tree.T.get(t.parent);\n  }\n  return res;\n}\n\nexport function subtreeIds(t, out = []) {\n  out.push(t.id);\n  for (const c of t.children) subtreeIds(c, out);\n  return out;\n}\n\n// Map every world node inside `focus` to the child block of `focus` that contains it.\nexport function blockIndex(tree, focusId) {\n  const blockOf = new Map();\n  const focus = tree.T.get(focusId);\n  for (const c of focus?.children || []) for (const id of subtreeIds(c)) blockOf.set(id, c.id);\n  return blockOf;\n}\n\n// Dependencies between the blocks of one level, summed: calls, object creation, and data access.\nexport function levelLinks(ix, tree, focusId, kinds = [\"calls\", \"instantiates\", \"reads\", \"writes\"]) {\n  const want = new Set(kinds);\n  const blockOf = blockIndex(tree, focusId);\n  const pairs = new Map();\n  for (const e of ix.edges) {\n    if (!want.has(e.kind)) continue;\n    const a = blockOf.get(e.source);\n    const b = blockOf.get(e.target);\n    if (!a || !b || a === b) continue;\n    const key = `${a}\\u0000${b}`;\n    pairs.set(key, (pairs.get(key) || 0) + (e.count || 1));\n  }\n  return [...pairs.entries()].map(([k, count]) => {\n    const [source, target] = k.split(\"\\u0000\");\n    return { source, target, count };\n  });\n}\n\n// Links from a block to everything outside it, summed per sibling block at the current level. When the\n// other end lies outside the current level, it is named by its top-level module, marked \"@\" (elsewhere).\nexport function blockDeps(ix, tree, focusId, blockId) {\n  const sibling = blockIndex(tree, focusId);\n  const top = focusId === \"root\" ? sibling : blockIndex(tree, \"root\");\n  const blockOf = { get: (id) => sibling.get(id) || (top.get(id) ? `@${top.get(id)}` : undefined) };\n  const inside = new Set(subtreeIds(tree.T.get(blockId)));\n  const out = new Map();\n  const inn = new Map();\n  const bump = (m, k, e) => m.set(k, (m.get(k) || 0) + (e.count || 1));\n  for (const id of inside) {\n    for (const e of ix.out.get(id) || []) if (!inside.has(e.target) && (CALLISH.has(e.kind) || DATA.has(e.kind))) bump(out, blockOf.get(e.target) || \"elsewhere\", e);\n    for (const e of ix.inn.get(id) || []) if (!inside.has(e.source) && (CALLISH.has(e.kind) || DATA.has(e.kind))) bump(inn, blockOf.get(e.source) || \"elsewhere\", e);\n  }\n  const sorted = (m) => [...m.entries()].sort((a, b) => b[1] - a[1]);\n  return { out: sorted(out), in: sorted(inn) };\n}\n\n// Change overlay: a block is \"changed\" when anything inside it changed, else \"affected\" when anything\n// inside it depends on or is reached by the change.\nexport function changeMarks(tree, cs) {\n  const rank = { changed: 3, moved: 2, affected: 1 };\n  const marks = new Map();\n  const up = (id, v) => {\n    for (let t = tree.T.get(id); t; t = t.parent ? tree.T.get(t.parent) : null) {\n      if ((rank[marks.get(t.id)] || 0) >= rank[v]) break; // ancestors are already marked at least this strongly\n      marks.set(t.id, v);\n    }\n  };\n  for (const [id, how] of Object.entries(cs?.changed || {})) up(id, how === \"moved\" ? \"moved\" : \"changed\");\n  for (const id of [...Object.keys(cs?.upstream || {}), ...Object.keys(cs?.downstream || {})]) up(id, \"affected\");\n  return marks;\n}\n"
+  },
+  {
+   "path": "viewer/src/tree.test.js",
+   "doc": null,
+   "loc": 147,
+   "source": "import assert from \"node:assert/strict\";\nimport { test } from \"node:test\";\nimport { layoutLevel, roofTiles } from \"./layout.js\";\nimport { indexWorld } from \"./model.js\";\nimport { blockDeps, buildTree, changeMarks, levelLinks, treeAncestors } from \"./tree.js\";\n\nconst node = (id, kind, name, parent, file, attrs = {}) => ({ id, kind, name, parent, group: \"g\", file, line: 1, end_line: 5, attrs });\nconst edge = (source, target, kind = \"calls\") => ({ source, target, kind, certainty: \"proven\", count: 1 });\n\nconst world = {\n  nodes: [\n    node(\"group:src\", \"group\", \"src\", null),\n    node(\"file:src/shop/cart.py\", \"file\", \"cart.py\", \"group:src\", \"src/shop/cart.py\", { loc: 120 }),\n    node(\"py:src.shop.cart.Cart\", \"class\", \"Cart\", \"file:src/shop/cart.py\", \"src/shop/cart.py\"),\n    node(\"py:src.shop.cart.Cart.total\", \"function\", \"total\", \"py:src.shop.cart.Cart\", \"src/shop/cart.py\", { loc: 30 }),\n    node(\"file:src/shop/tax.py\", \"file\", \"tax.py\", \"group:src\", \"src/shop/tax.py\", { loc: 20 }),\n    node(\"py:src.shop.tax.rate\", \"function\", \"rate\", \"file:src/shop/tax.py\", \"src/shop/tax.py\", { loc: 8 }),\n    node(\"file:src/api.py\", \"file\", \"api.py\", \"group:src\", \"src/api.py\", { loc: 40 }),\n    node(\"py:src.api.get_total\", \"function\", \"get_total\", \"file:src/api.py\", \"src/api.py\", { loc: 6 }),\n    node(\"endpoint:GET /total\", \"endpoint\", \"GET /total\", \"file:src/api.py\", \"src/api.py\"),\n    node(\"group:tests\", \"group\", \"tests\", null),\n    node(\"file:tests/test_cart.py\", \"file\", \"test_cart.py\", \"group:tests\", \"tests/test_cart.py\", { loc: 10, is_test: true }),\n    node(\"py:tests.test_cart.test_total\", \"function\", \"test_total\", \"file:tests/test_cart.py\", \"tests/test_cart.py\", { loc: 3, is_test: true }),\n    node(\"group:(data)\", \"group\", \"(data)\", null),\n    node(\"table:orders\", \"table\", \"orders\", \"group:(data)\"),\n  ],\n  edges: [\n    edge(\"py:src.api.get_total\", \"py:src.shop.cart.Cart.total\"),\n    edge(\"py:src.shop.cart.Cart.total\", \"py:src.shop.tax.rate\"),\n    edge(\"py:tests.test_cart.test_total\", \"py:src.shop.cart.Cart.total\"),\n    edge(\"py:src.shop.cart.Cart.total\", \"table:orders\", \"reads\"),\n    edge(\"endpoint:GET /total\", \"py:src.api.get_total\", \"routes\"),\n  ],\n};\n\nconst setup = () => {\n  const ix = indexWorld(world);\n  return { ix, tree: buildTree(ix, \"shop\") };\n};\n\ntest(\"the tree follows the folder structure; src/ is transparent; tables form a Database block\", () => {\n  const { tree } = setup();\n  const names = (id) => tree.T.get(id).children.map((c) => c.name).sort();\n  assert.deepEqual(names(\"root\"), [\"Database\", \"api.py\", \"shop\", \"tests\"]);\n  assert.ok(!tree.T.has(\"dir:src\"));\n  assert.deepEqual(names(\"dir:src/shop\"), [\"cart.py\", \"tax.py\"]);\n  assert.deepEqual(names(\"py:src.shop.cart.Cart\"), [\"total\"]);\n  assert.deepEqual(treeAncestors(tree, \"py:src.shop.cart.Cart.total\"), [\"root\", \"dir:src/shop\", \"file:src/shop/cart.py\", \"py:src.shop.cart.Cart\"]);\n});\n\ntest(\"stats roll up: lines, files, functions, tests, endpoints, tested share\", () => {\n  const { tree } = setup();\n  const s = tree.T.get(\"root\").stats;\n  assert.equal(s.loc, 190);\n  assert.equal(s.files, 4);\n  assert.equal(s.functions, 3);\n  assert.equal(s.fn, 4); // all functions, tests included: the size measure\n  assert.equal(s.endpoints, 1);\n  assert.equal(s.tested, 2); // total (direct) + rate (indirect)\n  assert.equal(s.data, 1);\n  assert.equal(tree.T.get(\"dir:tests\").isTest, true);\n  assert.equal(tree.T.get(\"dir:src/shop\").isTest, false);\n});\n\ntest(\"level links are summed between the blocks on screen\", () => {\n  const { ix, tree } = setup();\n  const root = levelLinks(ix, tree, \"root\").map((l) => `${l.source}>${l.target}:${l.count}`).sort();\n  assert.deepEqual(root, [\"dir:src/shop>db:1\", \"dir:tests>dir:src/shop:1\", \"file:src/api.py>dir:src/shop:1\"]);\n});\n\ntest(\"a block's dependencies: siblings by name, others by their top-level module (@)\", () => {\n  const { ix, tree } = setup();\n  const d = blockDeps(ix, tree, \"dir:src/shop\", \"file:src/shop/cart.py\");\n  assert.deepEqual(d.out, [\n    [\"file:src/shop/tax.py\", 1],\n    [\"@db\", 1],\n  ]);\n  assert.deepEqual(d.in.map(([k]) => k).sort(), [\"@dir:tests\", \"@file:src/api.py\"]);\n});\n\ntest(\"block size follows the number of functions\", () => {\n  const { tree } = setup();\n  const L = layoutLevel(tree.T.get(\"root\"));\n  const shop = L.rects.get(\"dir:src/shop\"); // 2 functions\n  const api = L.rects.get(\"file:src/api.py\"); // 1 function\n  assert.ok(shop.h > api.h);\n  assert.ok((shop.x1 - shop.x0) * (shop.y1 - shop.y0) > (api.x1 - api.x0) * (api.y1 - api.y0));\n});\n\ntest(\"level layout: one block per child; one-function blocks fall back to lines; deterministic\", () => {\n  const { tree } = setup();\n  const L = layoutLevel(tree.T.get(\"dir:src/shop\"));\n  assert.equal(L.blocks.length, 2);\n  const cart = L.rects.get(\"file:src/shop/cart.py\");\n  const tax = L.rects.get(\"file:src/shop/tax.py\");\n  assert.ok(cart.h > tax.h);\n  assert.ok(cart.x1 - cart.x0 > 0 && cart.y1 - cart.y0 > 0);\n  const again = layoutLevel(tree.T.get(\"dir:src/shop\"));\n  assert.deepEqual(\n    again.blocks.map((b) => [b.id, b.x0, b.y0]),\n    L.blocks.map((b) => [b.id, b.x0, b.y0]),\n  );\n  assert.equal(layoutLevel(tree.T.get(\"py:src.shop.tax.rate\")).blocks.length, 0);\n});\n\ntest(\"roof tiles divide a block's top into its children, inside the block\", () => {\n  const { tree } = setup();\n  const L = layoutLevel(tree.T.get(\"root\"));\n  const shop = L.rects.get(\"dir:src/shop\");\n  const tiles = roofTiles(shop);\n  assert.deepEqual(tiles.map((t) => t.id).sort(), [\"file:src/shop/cart.py\", \"file:src/shop/tax.py\"]);\n  for (const t of tiles) {\n    assert.ok(t.x0 >= shop.x0 && t.x1 <= shop.x1 && t.y0 >= shop.y0 && t.y1 <= shop.y1, t.id);\n    assert.equal(t.z, shop.h);\n    assert.equal(t.parent, \"dir:src/shop\");\n  }\n  assert.deepEqual(roofTiles(L.rects.get(\"file:src/api.py\")).length, 2); // a function and an endpoint\n  assert.deepEqual(roofTiles({ ...shop, t: { ...shop.t, children: [shop.t.children[0]] } }), []); // one child: nothing to divide\n});\n\ntest(\"change marks: changed blocks and every block containing them; affected ones too\", () => {\n  const { tree } = setup();\n  const marks = changeMarks(tree, {\n    changed: { \"py:src.shop.tax.rate\": \"modified\" },\n    upstream: { \"py:src.shop.cart.Cart.total\": 1, \"py:src.api.get_total\": 2 },\n    downstream: {},\n  });\n  assert.equal(marks.get(\"py:src.shop.tax.rate\"), \"changed\");\n  assert.equal(marks.get(\"file:src/shop/tax.py\"), \"changed\");\n  assert.equal(marks.get(\"dir:src/shop\"), \"changed\"); // contains a change: changed wins over affected\n  assert.equal(marks.get(\"file:src/shop/cart.py\"), \"affected\");\n  assert.equal(marks.get(\"file:src/api.py\"), \"affected\");\n  assert.equal(marks.get(\"dir:tests\"), undefined);\n});\n\ntest(\"change marks: moved is its own mark, weaker than changed, stronger than affected\", () => {\n  const { tree } = setup();\n  const marks = changeMarks(tree, {\n    changed: { \"file:src/shop/tax.py\": \"moved\", \"py:src.shop.tax.rate\": \"moved\", \"py:src.shop.cart.Cart.total\": \"modified\" },\n    upstream: { \"py:src.shop.tax.rate\": 1 },\n    downstream: {},\n  });\n  assert.equal(marks.get(\"file:src/shop/tax.py\"), \"moved\");\n  assert.equal(marks.get(\"file:src/shop/cart.py\"), \"changed\");\n  assert.equal(marks.get(\"dir:src/shop\"), \"changed\");\n});\n"
+  },
+  {
+   "path": "viewer/src/view.js",
+   "doc": "Cameras: 2D flat map and the 2.5D city (tilted orthographic orbit view, as in PR World v5).\nThe app keeps the camera in LAYOUT coordinates (y grows downwards). deck.gl's orbit view has y\npointing up, so y is negated when talking to it.",
+   "loc": 64,
+   "source": "// Cameras: 2D flat map and the 2.5D city (tilted orthographic orbit view, as in PR World v5).\n// The app keeps the camera in LAYOUT coordinates (y grows downwards). deck.gl's orbit view has y\n// pointing up, so y is negated when talking to it.\nimport { OrbitView, OrthographicView } from \"@deck.gl/core\";\nimport { fit } from \"./layout.js\";\n\nexport const VIEW_2D = new OrthographicView({ id: \"map\", flipY: true });\nexport const VIEW_3D = new OrbitView({ id: \"map\", orbitAxis: \"Z\", orthographic: true });\nexport const PITCH = 35;\nexport const ORBIT = -30;\nconst LIMITS = { minZoom: -4, maxZoom: 10 };\n\nexport function toDeck(vs, is3d) {\n  const [tx, ty, tz = 0] = vs.target;\n  return is3d\n    ? { ...vs, ...LIMITS, target: [tx, -ty, tz], rotationX: vs.rotationX ?? PITCH, rotationOrbit: vs.rotationOrbit ?? ORBIT }\n    : { ...vs, ...LIMITS, target: [tx, ty, 0] };\n}\n\nexport function fromDeck(v, is3d, prev) {\n  return {\n    target: is3d ? [v.target[0], -v.target[1], v.target[2] || 0] : [v.target[0], v.target[1], 0],\n    zoom: v.zoom,\n    rotationX: is3d ? v.rotationX : prev?.rotationX,\n    rotationOrbit: is3d ? v.rotationOrbit : prev?.rotationOrbit,\n  };\n}\n\nexport function makeViewport(vs, is3d, size) {\n  return (is3d ? VIEW_3D : VIEW_2D).makeViewport({ width: size.width, height: size.height, viewState: toDeck(vs, is3d) });\n}\n\n// Camera that frames box r (with its towers, up to r.zTop) in the current view mode.\nexport function fitView(r, size, is3d, prev, margin = 1.12) {\n  if (!is3d) return fit(r, size.width, size.height, margin);\n  const base = {\n    target: [(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, 0],\n    zoom: 0,\n    rotationX: prev?.rotationX ?? PITCH,\n    rotationOrbit: prev?.rotationOrbit ?? ORBIT,\n  };\n  const vp = makeViewport(base, true, size);\n  const top = r.zTop ?? 0;\n  const xs = [];\n  const ys = [];\n  for (const [x, y] of [\n    [r.x0, r.y0],\n    [r.x1, r.y0],\n    [r.x1, r.y1],\n    [r.x0, r.y1],\n  ])\n    for (const z of [0, top]) {\n      const [px, py] = vp.project([x, -y, z]);\n      xs.push(px);\n      ys.push(py);\n    }\n  const bw = Math.max(1, Math.max(...xs) - Math.min(...xs));\n  const bh = Math.max(1, Math.max(...ys) - Math.min(...ys));\n  const zoom = Math.max(-4, Math.min(9, Math.log2(Math.min(size.width / (bw * margin), size.height / (bh * margin)))));\n  // aim at the point under the centre of the projected box\n  const mid = vp.unproject([(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2], { targetZ: 0 });\n  return { ...base, target: [mid[0], -mid[1], 0], zoom };\n}\n"
   }
  ],
  "symbols": [
@@ -4433,6 +4475,1033 @@
    "decorators": [],
    "doc": null,
    "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/colors.js::mix",
+   "kind": "function",
+   "name": "mix",
+   "qualname": "mix",
+   "file": "viewer/src/colors.js",
+   "line": 31,
+   "end_line": 31,
+   "params": [
+    {
+     "name": "a",
+     "type": null
+    },
+    {
+     "name": "b",
+     "type": null
+    },
+    {
+     "name": "t",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/colors.js::dim",
+   "kind": "function",
+   "name": "dim",
+   "qualname": "dim",
+   "file": "viewer/src/colors.js",
+   "line": 32,
+   "end_line": 32,
+   "params": [
+    {
+     "name": "c",
+     "type": null
+    },
+    {
+     "name": "f",
+     "type": null,
+     "default": "0.5"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/colors.js::css",
+   "kind": "function",
+   "name": "css",
+   "qualname": "css",
+   "file": "viewer/src/colors.js",
+   "line": 33,
+   "end_line": 33,
+   "params": [
+    {
+     "name": "c",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/layout.js::layoutLevel",
+   "kind": "function",
+   "name": "layoutLevel",
+   "qualname": "layoutLevel",
+   "file": "viewer/src/layout.js",
+   "line": 13,
+   "end_line": 34,
+   "params": [
+    {
+     "name": "focus",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/layout.js::roofTiles",
+   "kind": "function",
+   "name": "roofTiles",
+   "qualname": "roofTiles",
+   "file": "viewer/src/layout.js",
+   "line": 38,
+   "end_line": 52,
+   "params": [
+    {
+     "name": "block",
+     "type": null
+    },
+    {
+     "name": "inset",
+     "type": null,
+     "default": "4"
+    },
+    {
+     "name": "gap",
+     "type": null,
+     "default": "2.5"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": "The roof of a block, divided into its children (one level deep): shows how a module is organised\nwithout opening it. Area follows the same size measure as the blocks. No division for 0–1 children.",
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/layout.js::centre",
+   "kind": "function",
+   "name": "centre",
+   "qualname": "centre",
+   "file": "viewer/src/layout.js",
+   "line": 54,
+   "end_line": 54,
+   "params": [
+    {
+     "name": "r",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/layout.js::curve",
+   "kind": "function",
+   "name": "curve",
+   "qualname": "curve",
+   "file": "viewer/src/layout.js",
+   "line": 57,
+   "end_line": 69,
+   "params": [
+    {
+     "name": "a",
+     "type": null
+    },
+    {
+     "name": "b",
+     "type": null
+    },
+    {
+     "name": "bend",
+     "type": null,
+     "default": "0.18"
+    },
+    {
+     "name": "steps",
+     "type": null,
+     "default": "18"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": "Curved link between two points (quadratic Bézier), as a polyline for deck.gl's PathLayer.",
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/layout.js::curve3d",
+   "kind": "function",
+   "name": "curve3d",
+   "qualname": "curve3d",
+   "file": "viewer/src/layout.js",
+   "line": 72,
+   "end_line": 81,
+   "params": [
+    {
+     "name": "a",
+     "type": null
+    },
+    {
+     "name": "b",
+     "type": null
+    },
+    {
+     "name": "lift",
+     "type": null,
+     "default": "0.22"
+    },
+    {
+     "name": "steps",
+     "type": null,
+     "default": "20"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": "Arc between two block tops, lifted in the middle in proportion to its length.",
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/layout.js::fit",
+   "kind": "function",
+   "name": "fit",
+   "qualname": "fit",
+   "file": "viewer/src/layout.js",
+   "line": 84,
+   "end_line": 89,
+   "params": [
+    {
+     "name": "r",
+     "type": null
+    },
+    {
+     "name": "width",
+     "type": null
+    },
+    {
+     "name": "height",
+     "type": null
+    },
+    {
+     "name": "margin",
+     "type": null,
+     "default": "1.12"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": "Camera that fits a rectangle into a viewport of (width x height) pixels (flat map).",
+   "calls": [],
+   "called_by": [
+    "viewer/src/view.js::fitView"
+   ]
+  },
+  {
+   "id": "viewer/src/model.js::push",
+   "kind": "function",
+   "name": "push",
+   "qualname": "push",
+   "file": "viewer/src/model.js",
+   "line": 6,
+   "end_line": 9,
+   "params": [
+    {
+     "name": "map",
+     "type": null
+    },
+    {
+     "name": "key",
+     "type": null
+    },
+    {
+     "name": "value",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": false,
+   "doc": null,
+   "calls": [],
+   "called_by": [
+    "viewer/src/model.js::indexWorld"
+   ]
+  },
+  {
+   "id": "viewer/src/model.js::indexWorld",
+   "kind": "function",
+   "name": "indexWorld",
+   "qualname": "indexWorld",
+   "file": "viewer/src/model.js",
+   "line": 11,
+   "end_line": 47,
+   "params": [
+    {
+     "name": "world",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [
+    "viewer/src/model.js::push"
+   ],
+   "called_by": [
+    "viewer/src/tree.test.js::setup"
+   ]
+  },
+  {
+   "id": "viewer/src/model.js::children",
+   "kind": "function",
+   "name": "children",
+   "qualname": "children",
+   "file": "viewer/src/model.js",
+   "line": 49,
+   "end_line": 51,
+   "params": [
+    {
+     "name": "ix",
+     "type": null
+    },
+    {
+     "name": "id",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [],
+   "called_by": [
+    "viewer/src/model.js::descendants"
+   ]
+  },
+  {
+   "id": "viewer/src/model.js::descendants",
+   "kind": "function",
+   "name": "descendants",
+   "qualname": "descendants",
+   "file": "viewer/src/model.js",
+   "line": 53,
+   "end_line": 63,
+   "params": [
+    {
+     "name": "ix",
+     "type": null
+    },
+    {
+     "name": "id",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [
+    "viewer/src/model.js::children"
+   ],
+   "called_by": [
+    "viewer/src/model.js::linksFor"
+   ]
+  },
+  {
+   "id": "viewer/src/model.js::ancestors",
+   "kind": "function",
+   "name": "ancestors",
+   "qualname": "ancestors",
+   "file": "viewer/src/model.js",
+   "line": 65,
+   "end_line": 73,
+   "params": [
+    {
+     "name": "ix",
+     "type": null
+    },
+    {
+     "name": "id",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/model.js::linksFor",
+   "kind": "function",
+   "name": "linksFor",
+   "qualname": "linksFor",
+   "file": "viewer/src/model.js",
+   "line": 76,
+   "end_line": 85,
+   "params": [
+    {
+     "name": "ix",
+     "type": null
+    },
+    {
+     "name": "selId",
+     "type": null
+    },
+    {
+     "name": "max",
+     "type": null,
+     "default": "600"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": "Links between the selected thing (including everything inside it) and the rest of the world.",
+   "calls": [
+    "viewer/src/model.js::descendants"
+   ],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/model.js::groupLinks",
+   "kind": "function",
+   "name": "groupLinks",
+   "qualname": "groupLinks",
+   "file": "viewer/src/model.js",
+   "line": 88,
+   "end_line": 103,
+   "params": [
+    {
+     "name": "ix",
+     "type": null
+    },
+    {
+     "name": "kinds",
+     "type": null,
+     "default": "[\"calls\", \"instantiates\", \"reads\", \"writes\"]"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": "Overview: how the top-level groups depend on each other (calls, instantiation, data access).",
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/model.js::displayName",
+   "kind": "function",
+   "name": "displayName",
+   "qualname": "displayName",
+   "file": "viewer/src/model.js",
+   "line": 106,
+   "end_line": 114,
+   "params": [
+    {
+     "name": "ix",
+     "type": null
+    },
+    {
+     "name": "n",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": "Short human name: methods get their class, scripts their file.",
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/model.js::search",
+   "kind": "function",
+   "name": "search",
+   "qualname": "search",
+   "file": "viewer/src/model.js",
+   "line": 116,
+   "end_line": 129,
+   "params": [
+    {
+     "name": "ix",
+     "type": null
+    },
+    {
+     "name": "query",
+     "type": null
+    },
+    {
+     "name": "limit",
+     "type": null,
+     "default": "12"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/model.test.js::node",
+   "kind": "function",
+   "name": "node",
+   "qualname": "node",
+   "file": "viewer/src/model.test.js",
+   "line": 7,
+   "end_line": 7,
+   "params": [
+    {
+     "name": "id",
+     "type": null
+    },
+    {
+     "name": "kind",
+     "type": null
+    },
+    {
+     "name": "name",
+     "type": null
+    },
+    {
+     "name": "parent",
+     "type": null
+    },
+    {
+     "name": "group",
+     "type": null
+    },
+    {
+     "name": "attrs",
+     "type": null,
+     "default": "{}"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": false,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/model.test.js::edge",
+   "kind": "function",
+   "name": "edge",
+   "qualname": "edge",
+   "file": "viewer/src/model.test.js",
+   "line": 8,
+   "end_line": 8,
+   "params": [
+    {
+     "name": "source",
+     "type": null
+    },
+    {
+     "name": "target",
+     "type": null
+    },
+    {
+     "name": "kind",
+     "type": null,
+     "default": "\"calls\""
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": false,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/tree.js::EMPTY",
+   "kind": "function",
+   "name": "EMPTY",
+   "qualname": "EMPTY",
+   "file": "viewer/src/tree.js",
+   "line": 9,
+   "end_line": 9,
+   "params": [],
+   "returns": null,
+   "async": false,
+   "exported": false,
+   "doc": null,
+   "calls": [],
+   "called_by": [
+    "viewer/src/tree.js::buildTree"
+   ]
+  },
+  {
+   "id": "viewer/src/tree.js::buildTree",
+   "kind": "function",
+   "name": "buildTree",
+   "qualname": "buildTree",
+   "file": "viewer/src/tree.js",
+   "line": 11,
+   "end_line": 91,
+   "params": [
+    {
+     "name": "ix",
+     "type": null
+    },
+    {
+     "name": "rootName",
+     "type": null,
+     "default": "\"project\""
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [
+    "viewer/src/tree.js::EMPTY"
+   ],
+   "called_by": [
+    "viewer/src/tree.test.js::setup"
+   ]
+  },
+  {
+   "id": "viewer/src/tree.js::treeAncestors",
+   "kind": "function",
+   "name": "treeAncestors",
+   "qualname": "treeAncestors",
+   "file": "viewer/src/tree.js",
+   "line": 93,
+   "end_line": 101,
+   "params": [
+    {
+     "name": "tree",
+     "type": null
+    },
+    {
+     "name": "id",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/tree.js::subtreeIds",
+   "kind": "function",
+   "name": "subtreeIds",
+   "qualname": "subtreeIds",
+   "file": "viewer/src/tree.js",
+   "line": 103,
+   "end_line": 107,
+   "params": [
+    {
+     "name": "t",
+     "type": null
+    },
+    {
+     "name": "out",
+     "type": null,
+     "default": "[]"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [],
+   "called_by": [
+    "viewer/src/tree.js::blockDeps",
+    "viewer/src/tree.js::blockIndex"
+   ]
+  },
+  {
+   "id": "viewer/src/tree.js::blockIndex",
+   "kind": "function",
+   "name": "blockIndex",
+   "qualname": "blockIndex",
+   "file": "viewer/src/tree.js",
+   "line": 110,
+   "end_line": 115,
+   "params": [
+    {
+     "name": "tree",
+     "type": null
+    },
+    {
+     "name": "focusId",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": "Map every world node inside `focus` to the child block of `focus` that contains it.",
+   "calls": [
+    "viewer/src/tree.js::subtreeIds"
+   ],
+   "called_by": [
+    "viewer/src/tree.js::blockDeps",
+    "viewer/src/tree.js::levelLinks"
+   ]
+  },
+  {
+   "id": "viewer/src/tree.js::levelLinks",
+   "kind": "function",
+   "name": "levelLinks",
+   "qualname": "levelLinks",
+   "file": "viewer/src/tree.js",
+   "line": 118,
+   "end_line": 134,
+   "params": [
+    {
+     "name": "ix",
+     "type": null
+    },
+    {
+     "name": "tree",
+     "type": null
+    },
+    {
+     "name": "focusId",
+     "type": null
+    },
+    {
+     "name": "kinds",
+     "type": null,
+     "default": "[\"calls\", \"instantiates\", \"reads\", \"writes\"]"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": "Dependencies between the blocks of one level, summed: calls, object creation, and data access.",
+   "calls": [
+    "viewer/src/tree.js::blockIndex"
+   ],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/tree.js::blockDeps",
+   "kind": "function",
+   "name": "blockDeps",
+   "qualname": "blockDeps",
+   "file": "viewer/src/tree.js",
+   "line": 138,
+   "end_line": 152,
+   "params": [
+    {
+     "name": "ix",
+     "type": null
+    },
+    {
+     "name": "tree",
+     "type": null
+    },
+    {
+     "name": "focusId",
+     "type": null
+    },
+    {
+     "name": "blockId",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": "Links from a block to everything outside it, summed per sibling block at the current level. When the\nother end lies outside the current level, it is named by its top-level module, marked \"@\" (elsewhere).",
+   "calls": [
+    "viewer/src/tree.js::blockIndex",
+    "viewer/src/tree.js::subtreeIds"
+   ],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/tree.js::changeMarks",
+   "kind": "function",
+   "name": "changeMarks",
+   "qualname": "changeMarks",
+   "file": "viewer/src/tree.js",
+   "line": 156,
+   "end_line": 168,
+   "params": [
+    {
+     "name": "tree",
+     "type": null
+    },
+    {
+     "name": "cs",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": "Change overlay: a block is \"changed\" when anything inside it changed, else \"affected\" when anything\ninside it depends on or is reached by the change.",
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/tree.test.js::node",
+   "kind": "function",
+   "name": "node",
+   "qualname": "node",
+   "file": "viewer/src/tree.test.js",
+   "line": 7,
+   "end_line": 7,
+   "params": [
+    {
+     "name": "id",
+     "type": null
+    },
+    {
+     "name": "kind",
+     "type": null
+    },
+    {
+     "name": "name",
+     "type": null
+    },
+    {
+     "name": "parent",
+     "type": null
+    },
+    {
+     "name": "file",
+     "type": null
+    },
+    {
+     "name": "attrs",
+     "type": null,
+     "default": "{}"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": false,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/tree.test.js::edge",
+   "kind": "function",
+   "name": "edge",
+   "qualname": "edge",
+   "file": "viewer/src/tree.test.js",
+   "line": 8,
+   "end_line": 8,
+   "params": [
+    {
+     "name": "source",
+     "type": null
+    },
+    {
+     "name": "target",
+     "type": null
+    },
+    {
+     "name": "kind",
+     "type": null,
+     "default": "\"calls\""
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": false,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/tree.test.js::setup",
+   "kind": "function",
+   "name": "setup",
+   "qualname": "setup",
+   "file": "viewer/src/tree.test.js",
+   "line": 36,
+   "end_line": 39,
+   "params": [],
+   "returns": null,
+   "async": false,
+   "exported": false,
+   "doc": null,
+   "calls": [
+    "viewer/src/model.js::indexWorld",
+    "viewer/src/tree.js::buildTree"
+   ],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/view.js::toDeck",
+   "kind": "function",
+   "name": "toDeck",
+   "qualname": "toDeck",
+   "file": "viewer/src/view.js",
+   "line": 13,
+   "end_line": 18,
+   "params": [
+    {
+     "name": "vs",
+     "type": null
+    },
+    {
+     "name": "is3d",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [],
+   "called_by": [
+    "viewer/src/view.js::makeViewport"
+   ]
+  },
+  {
+   "id": "viewer/src/view.js::fromDeck",
+   "kind": "function",
+   "name": "fromDeck",
+   "qualname": "fromDeck",
+   "file": "viewer/src/view.js",
+   "line": 20,
+   "end_line": 27,
+   "params": [
+    {
+     "name": "v",
+     "type": null
+    },
+    {
+     "name": "is3d",
+     "type": null
+    },
+    {
+     "name": "prev",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [],
+   "called_by": []
+  },
+  {
+   "id": "viewer/src/view.js::makeViewport",
+   "kind": "function",
+   "name": "makeViewport",
+   "qualname": "makeViewport",
+   "file": "viewer/src/view.js",
+   "line": 29,
+   "end_line": 31,
+   "params": [
+    {
+     "name": "vs",
+     "type": null
+    },
+    {
+     "name": "is3d",
+     "type": null
+    },
+    {
+     "name": "size",
+     "type": null
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": null,
+   "calls": [
+    "viewer/src/view.js::toDeck"
+   ],
+   "called_by": [
+    "viewer/src/view.js::fitView"
+   ]
+  },
+  {
+   "id": "viewer/src/view.js::fitView",
+   "kind": "function",
+   "name": "fitView",
+   "qualname": "fitView",
+   "file": "viewer/src/view.js",
+   "line": 34,
+   "end_line": 63,
+   "params": [
+    {
+     "name": "r",
+     "type": null
+    },
+    {
+     "name": "size",
+     "type": null
+    },
+    {
+     "name": "is3d",
+     "type": null
+    },
+    {
+     "name": "prev",
+     "type": null
+    },
+    {
+     "name": "margin",
+     "type": null,
+     "default": "1.12"
+    }
+   ],
+   "returns": null,
+   "async": false,
+   "exported": true,
+   "doc": "Camera that frames box r (with its towers, up to r.zTop) in the current view mode.",
+   "calls": [
+    "viewer/src/layout.js::fit",
+    "viewer/src/view.js::makeViewport"
+   ],
    "called_by": []
   }
  ],

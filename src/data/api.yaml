@@ -1,0 +1,146 @@
+# API reference. Road Risk endpoints are read from the code (every endpoint must be documented);
+# projectViewer routes are checked against the server's own route list.
+
+# ---------------- Road Risk (FastAPI) ----------------
+- id: rr-health
+  project: road-risk
+  method: GET
+  path: /health
+  handler: "src/api/main.py::health_check"
+  purpose: Tells the hosting platform whether the service can really serve risk requests.
+  responses:
+    - { status: "200", when: "Database and spatial extension work: {status: ok, accidents: 180734}" }
+    - { status: "503", when: "Either fails: {status: unavailable, error: <type>}, with no paths or messages" }
+  notes: "A deep check: it runs a real query and a spatial function. A shallow check once reported 'ok' while every risk endpoint was broken."
+
+- id: rr-point-get
+  project: road-risk
+  method: GET
+  path: /api/v1/risk/point
+  handler: "src/api/main.py::evaluate_point_risk_get"
+  purpose: Risk profile for one location, for quick calls and browser links.
+  params:
+    - { name: lat, in: query, type: float, rule: "required, −90 … 90", why: "Impossible coordinates are rejected before any query (422)." }
+    - { name: lon, in: query, type: float, rule: "required, −180 … 180", why: "Same." }
+    - { name: radius_m, in: query, type: float, rule: "default 250, > 0, ≤ 10,000", why: "250 m ≈ one junction's surroundings; the cap keeps any single request cheap." }
+    - { name: winter_only, in: query, type: bool, rule: "default false", why: "Only icy, snowy, slushy, packed-snow or frosty surfaces: risk under winter conditions." }
+    - { name: road_user_filter, in: query, type: "string | null", rule: "optional, e.g. polkupyöräilijä", why: "Only crashes involving that road user; matched by (year, accident_id)." }
+    - { name: lang, in: query, type: "en | fi", rule: "default en; anything else → 422", why: "Labels in English or the canonical Finnish." }
+  responses:
+    - { status: "200", when: "A RiskProfile: score 0–100, tier, breakdowns, 15 highest-weighted incidents, reference_year" }
+    - { status: "422", when: "A parameter breaks its rule" }
+    - { status: "500", when: "Unexpected error: {detail, error_id} only" }
+
+- id: rr-point-post
+  project: road-risk
+  method: POST
+  path: /api/v1/risk/point
+  handler: "src/api/main.py::evaluate_point_risk"
+  purpose: The same as GET, with the full RiskQuery as a JSON body (including reference_year and half_life_years).
+  params:
+    - { name: "body: RiskQuery", in: body, type: object, rule: "lat, lon, radius_m, reference_year (2014–2100 or null), half_life_years (> 0, default 5), winter_only, road_user_filter, lang", why: "Advanced options without a long URL; reference_year enables 'risk as of' a past year (later crashes excluded)." }
+  responses:
+    - { status: "200", when: "A RiskProfile" }
+    - { status: "422", when: "Invalid body" }
+    - { status: "500", when: "{detail, error_id}" }
+
+- id: rr-route
+  project: road-risk
+  method: POST
+  path: /api/v1/risk/route
+  handler: "src/api/main.py::evaluate_route_corridor"
+  purpose: Risk along a route, given as waypoints.
+  params:
+    - { name: waypoints, in: body, type: "list of [lat, lon]", rule: "at least one", why: "An empty route is a client error (400)." }
+    - { name: radius_m, in: body, type: float, rule: "default 150", why: "Narrower than a point query: a corridor along the road." }
+    - { name: winter_only / road_user_filter / lang, in: body, type: "as for point", rule: "optional", why: "Same meaning, applied to every waypoint." }
+  responses:
+    - { status: "200", when: "max and mean score, overall tier (from the max), one profile per waypoint" }
+    - { status: "400", when: "No waypoints" }
+  notes: "The overall tier uses the maximum, not the mean: one dangerous junction makes a route risky."
+
+# ---------------- projectViewer (local server, 127.0.0.1:8765) ----------------
+- id: pv-projects
+  project: project-viewer
+  method: GET
+  path: /api/projects
+  handler: "src/projectviewer/server.py"
+  purpose: All subscribed projects with their current version and last activity, for the switcher and "follow activity".
+  responses: [{ status: "200", when: "[{id, name, path, version, last_change}]" }]
+
+- id: pv-world
+  project: project-viewer
+  method: GET
+  path: /api/p/<id>/world
+  handler: "src/projectviewer/server.py::Project.current"
+  purpose: The analysed world (nodes and edges) for one project.
+  params:
+    - { name: If-None-Match, in: header, type: string, rule: "the version the browser already has", why: "Unchanged → 304 with no body." }
+  responses:
+    - { status: "200", when: "The world as JSON (gzipped when accepted), with ETag = version" }
+    - { status: "304", when: "The browser's version is current" }
+
+- id: pv-version
+  project: project-viewer
+  method: GET
+  path: /api/p/<id>/version
+  handler: "src/projectviewer/server.py::Project.fingerprint"
+  purpose: A cheap "has anything changed?" check for polling.
+  responses: [{ status: "200", when: "{version}" }]
+
+- id: pv-source
+  project: project-viewer
+  method: GET
+  path: /api/p/<id>/source?file=<path>
+  handler: "src/projectviewer/server.py::Project.is_project_file"
+  purpose: The source of one file, for the side panel.
+  params:
+    - { name: file, in: query, type: path, rule: "must be a file the analyser itself found", why: "An allow-list: no path tricks can read other files on the machine." }
+  responses: [{ status: "200", when: "{file, lines}" }, { status: "404", when: "Not a project file" }, { status: "413", when: "File too large to show" }]
+
+- id: pv-commits
+  project: project-viewer
+  method: GET
+  path: /api/p/<id>/commits
+  handler: "src/projectviewer/changes.py::commit_list"
+  purpose: Recent commits with how many change notes and issue references each has.
+  responses: [{ status: "200", when: "[{sha, subject, notes, refs, …}]" }]
+
+- id: pv-changes
+  project: project-viewer
+  method: GET
+  path: /api/p/<id>/changes?ref=working|<sha>
+  handler: "src/projectviewer/changes.py::change_set"
+  purpose: What a commit (or the uncommitted work) changed, moved, removed and affects, with its notes.
+  params:
+    - { name: ref, in: query, type: "working | sha | HEAD~n", rule: "must match a strict pattern", why: "The value reaches git commands; the pattern rejects anything else." }
+  responses: [{ status: "200", when: "{changed, moved, removed, upstream, downstream, files, notes}" }, { status: "400", when: "Invalid ref" }, { status: "404", when: "Unknown commit" }]
+
+- id: pv-diff
+  project: project-viewer
+  method: GET
+  path: /api/p/<id>/diff?ref=…&file=<path>
+  handler: "src/projectviewer/changes.py::file_diff"
+  purpose: The unified diff of one file in a change set (the "how" behind the red blocks).
+  responses: [{ status: "200", when: "{diff}" }]
+
+- id: pv-events-get
+  project: project-viewer
+  method: GET
+  path: /api/p/<id>/events?since=<ms>
+  handler: "src/projectviewer/server.py"
+  purpose: Recent AI activity for the feed.
+  params:
+    - { name: since, in: query, type: milliseconds, rule: "optional", why: "Only new events since the browser's last poll." }
+  responses: [{ status: "200", when: "Recent events (up to 200 kept per project)" }]
+
+- id: pv-events-post
+  project: project-viewer
+  method: POST
+  path: /api/events
+  handler: "src/projectviewer/hook.py::send"
+  purpose: Where the Claude Code hook delivers each edit, prompt and stop.
+  params:
+    - { name: X-ProjectViewer, in: header, type: string, rule: "must be 1", why: "Blocks other websites from posting events (browsers don't add custom headers to simple cross-site posts)." }
+    - { name: body, in: body, type: JSON, rule: "at most 16 KB", why: "A hook event is small; anything bigger is refused." }
+  responses: [{ status: "202", when: "Accepted: {accepted}" }, { status: "400", when: "Not valid JSON, or not a valid event" }, { status: "403", when: "Missing X-ProjectViewer header" }, { status: "413", when: "Larger than 16 KB" }]

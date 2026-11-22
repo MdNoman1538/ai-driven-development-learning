@@ -4,6 +4,16 @@ description: "Writing down the decision, the options and the reasoning, so it ca
 concept:
   summary: "Writing down the decision, the options and the reasoning, so it can be understood, and changed, later."
   projects: [road-risk, project-viewer, learning-app]
+  uses:
+    road-risk:
+      how: 8 ADRs, from 'the LLM never decides' to the crash key.
+      stage: p0
+    project-viewer:
+      how: 7 ADRs; ADR-0005 was superseded by ADR-0006 after real use.
+      stage: p1
+    learning-app:
+      how: Its own ADRs from the first commit, imported like the others.
+      stage: L0
   level: foundation
 ---
 

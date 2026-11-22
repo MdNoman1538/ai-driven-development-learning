@@ -4,6 +4,10 @@ description: "Making work proportional to the change: pure functions and content
 concept:
   summary: "Making work proportional to the change: pure functions and content-addressed keys."
   projects: [project-viewer]
+  uses:
+    project-viewer:
+      how: Per-file facts cached under sha256(version, path, content).
+      stage: p1
   level: advanced
 ---
 

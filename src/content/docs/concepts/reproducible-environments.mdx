@@ -4,6 +4,16 @@ description: "Lock files, exact versions and the two-week rule: why every instal
 concept:
   summary: "Lock files, exact versions and the two-week rule: why every install must be identical."
   projects: [road-risk, project-viewer, learning-app]
+  uses:
+    road-risk:
+      how: uv.lock pins Python packages; requirements.txt is generated and checked in CI.
+      stage: p0
+    project-viewer:
+      how: uv.lock plus exact npm pins for the viewer.
+      stage: p1
+    learning-app:
+      how: Exact npm versions, each at least two weeks old.
+      stage: L0
   level: foundation
 ---
 

@@ -1,0 +1,363 @@
+# Walkthroughs: one real request or job, followed step by step through the code.
+# Every `code` block must appear in the file at `where` (whitespace-normalised): checked by the build.
+
+# =============================== Road Risk ===============================
+- id: rr-risk-request
+  project: road-risk
+  order: 1
+  stage: p0
+  title: "A risk request: GET /api/v1/risk/point"
+  question: What happens, line by line, when someone asks "how risky is this spot?"
+  summary: >-
+    From HTTP parameters to a risk profile: validation at the edge, one shared database
+    connection, a spatial query in metres, three weights per crash, a saturating score, the top
+    15 incidents, and translation at the very end.
+  steps:
+    - title: FastAPI checks the input before any code runs
+      where: "src/api/main.py::evaluate_point_risk_get"
+      code: |
+        lat: float = Query(..., ge=-90.0, le=90.0),
+        lon: float = Query(..., ge=-180.0, le=180.0),
+        radius_m: float = Query(250.0, gt=0.0, le=10000.0),
+      explain: >-
+        Each parameter declares its type and its allowed range. FastAPI rejects a bad request with
+        a 422 error before the engine or the database is touched.
+      params:
+        - { name: "ge=-90.0, le=90.0", value: "latitude range", why: "Impossible coordinates are a client error, not something to query." }
+        - { name: "radius_m=250.0", value: "default", why: "About the surroundings of one junction." }
+        - { name: "le=10000.0", value: "maximum 10 km", why: "One request can't scan half of Finland and starve other requests." }
+      choice: "Validation at the edge (the DTO pattern) instead of checks inside the engine: bad data never travels inwards."
+    - title: Hand over to the engine
+      where: "src/api/main.py::evaluate_point_risk_get"
+      code: "return engine.evaluate_point(query)"
+      explain: >-
+        `engine` is created once when the API module loads; it's shared by all requests. The API
+        layer contains no risk logic at all: it only translates HTTP into a RiskQuery.
+      choice: "A module-level engine (shared instance) instead of one per request: the expensive connection is reused."
+    - title: Decide which year counts as "now"
+      where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point"
+      code: "reference_year = query.reference_year if query.reference_year is not None else self.latest_data_year()"
+      explain: >-
+        Time decay needs a reference year. By default it's the newest year in the data, read once
+        per connection, never a hard-coded year that would silently go stale.
+      params:
+        - { name: reference_year, value: "None → latest year in the data", why: "Scores update by themselves when new data arrives; the response says which year was used." }
+    - title: Build the query with parameters, never pasted values
+      where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point"
+      code: |
+        where_clauses = [f"ST_DWithin(r.geom_3067, t.pt, {param(query.radius_m)})"]
+        # Risk "as of" a year must not see later crashes (they would get full weight).
+        where_clauses.append(f"(r.year IS NULL OR r.year <= {param(reference_year)})")
+      explain: >-
+        `param()` stores the value and returns a numbered placeholder ($3, $4 …). `ST_DWithin`
+        finds crashes within the radius using the R-tree index. The year filter was added after
+        AI code review found that "risk as of 2018" counted 2019–2025 crashes at full weight.
+      choice: "Parameterised queries instead of string building: no injection, no breakage on quotes."
+    - title: Convert the GPS point to metres
+      where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point"
+      code: "SELECT ST_Transform(ST_Point($1, $2), 'EPSG:4326', 'EPSG:3067', always_xy := true) AS pt"
+      explain: >-
+        GPS coordinates (EPSG:4326, degrees) are converted to Finland's metric grid (EPSG:3067), so
+        "250" means 250 metres.
+      params:
+        - { name: "always_xy := true", value: "longitude first", why: "EPSG:4326 officially puts latitude first; GPS gives longitude first. Without this every point lands in the wrong place, silently." }
+    - title: Use the shared connection, one cursor per request
+      where: "src/scoring/risk_engine.py::SpatialRiskEngine.cursor"
+      code: "return self._connection().cursor()"
+      explain: >-
+        The connection is created once, lazily, under a lock (double-checked locking). Each request
+        gets its own cursor, because a DuckDB connection must not be used by two threads at once.
+      choice: "Persistent connection instead of reconnecting: 78 → 15 ms per lookup."
+    - title: Weight every crash by distance (and severity and age)
+      where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point"
+      code: "w_dist = max(0.05, 1.0 - (dist_m / query.radius_m))"
+      explain: >-
+        Each crash gets three weights: severity (fatal 10 … no injuries 1), recency (halves every 5
+        years) and distance (1 at the centre, falling to a floor of 0.05). Try them in the
+        Algorithms page's playground.
+      params:
+        - { name: "0.05", value: "floor", why: "Crashes near the edge still count a little instead of vanishing." }
+    - title: Turn the sum into a 0–100 score
+      where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point"
+      code: "normalized_score = round(100.0 * (1.0 - math.exp(-density_adjusted / 25.0)), 1)"
+      explain: >-
+        The weighted sum is divided by the circle's area (relative to 250 m), then squashed with a
+        saturating curve so it always lands between 0 and 100.
+      params:
+        - { name: "25.0", value: "scale", why: "The density at which the score reaches about 63. A judgement call, to be replaced by calibrated risk in Phases 2 and 4." }
+    - title: Keep only the 15 most important crashes
+      where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point"
+      code: "top_rows = heapq.nlargest(15, scored, key=lambda s: s[0])"
+      explain: >-
+        A heap keeps the best 15 seen so far, so only the winners become full objects with
+        translated labels.
+      choice: "Top-k with a heap instead of sorting all 4,659 crashes: O(n log k) and fewer objects."
+    - title: Translate only at the output
+      where: "src/scoring/risk_engine.py::SpatialRiskEngine._summary"
+      code: "severity=translate_severity(severity, lang),"
+      explain: >-
+        The data stays in its canonical Finnish values; English labels (and "Not recorded" for
+        NULL) are added only when building the response.
+
+- id: rr-rebuild-database
+  project: road-risk
+  order: 2
+  stage: p0
+  title: "Rebuilding the database from raw files"
+  question: How do 12 messy CSV files become a clean, verifiable database, the same way every time?
+  summary: >-
+    A pipeline with a safety net: build to a side file, read everything as text, apply rules
+    written once, quarantine what can't be used, index, then swap the new file into place.
+  steps:
+    - title: Build next to the real file, never on top of it
+      where: "src/ingestion/ingest_all.py::build_database"
+      code: 'building = db_path.with_name(db_path.name + ".building")'
+      explain: "All work happens in road_risk.duckdb.building. The real database stays untouched until the very end."
+      choice: "Atomic write instead of editing in place: a failed build can never leave a half-built database."
+    - title: Open it writable through the one gateway
+      where: "src/ingestion/ingest_all.py::build_database"
+      code: "con = connect_spatial(building, read_only=False)"
+      explain: "The same connect_spatial() the app uses: installs and loads the spatial extension. Here, exceptionally, writable."
+      params:
+        - { name: read_only, value: "False", why: "Only the builder may write; the app always opens read-only (the default)." }
+    - title: Apply each cleaning rule, written once in SQL
+      where: "src/ingestion/ingest_all.py::_ingest_accident_file"
+      code: '{clean.heavy_vehicle(src["heavy_vehicle"])} AS heavy_vehicle,'
+      explain: >-
+        `src` maps each target column to the source column for this file's format (2014–21 or
+        2022+). The rule turns on/true/kyllä into TRUE, and stops the build on an unseen spelling.
+      choice: "One rule for both formats instead of two copies that could drift apart."
+    - title: Quarantine instead of silently dropping
+      where: "src/ingestion/ingest_all.py::_ingest_accident_file"
+      code: "CASE WHEN x_raw IS NULL OR y_raw IS NULL THEN 'no_coordinates' ELSE 'bad_coordinates' END"
+      explain: >-
+        Crashes without usable coordinates go to ingest_rejects, with a reason that tells "missing"
+        apart from "present but unreadable". 173 rejected rows are counted, not lost.
+    - title: Index for spatial search
+      where: "src/ingestion/ingest_all.py::build_database"
+      code: 'con.execute("CREATE INDEX idx_accidents_geom ON road_accidents USING RTREE (geom_3067);")'
+      explain: "An R-tree lets 'within 250 m' check a few boxes instead of 180,734 rows."
+    - title: Swap the finished database into place
+      where: "src/ingestion/ingest_all.py::build_database"
+      code: "os.replace(building, db_path)"
+      explain: >-
+        One rename: readers see the old file or the complete new one, never anything in between.
+        A stale write-ahead log from the old file is deleted first.
+
+- id: rr-fetch-database
+  project: road-risk
+  order: 3
+  stage: p0
+  title: "Fetching the pinned database on a fresh machine"
+  question: How do CI and Render get exactly the right database when it isn't in git?
+  summary: "Read the lock file, skip if already correct, protect local work, download to a side file, check size and checksum, rename."
+  steps:
+    - title: Nothing to do if the file already matches
+      where: "src/core/dataset.py::fetch"
+      code: |
+        if sha256_of(target) == lock["sha256"]:
+            return "up-to-date"
+      explain: "Running fetch twice is harmless (idempotent), so every build can run it."
+    - title: Never overwrite a different local database
+      where: "src/core/dataset.py::fetch"
+      code: "raise LocalDatabaseDiffers("
+      explain: "A developer's freshly rebuilt database differs from the release; silently replacing it would lose work. Only --force replaces it."
+    - title: Download next to the target
+      where: "src/core/dataset.py::fetch"
+      code: 'part = target.with_name(target.name + ".part")'
+      explain: "The download streams into a .part file while its SHA-256 is computed on the fly."
+    - title: A short file is "incomplete", not "tampered"
+      where: "src/core/dataset.py::fetch"
+      code: 'if received != lock["bytes"]:'
+      explain: "Checking the size first gives an honest error for a cut-off transfer (found by AI code review)."
+    - title: Rename only after verification
+      where: "src/core/dataset.py::fetch"
+      code: "os.replace(part, target)  # atomic on the same filesystem"
+      explain: "Only a file with the right size and checksum ever becomes the database."
+
+- id: rr-health
+  project: road-risk
+  order: 4
+  stage: p0
+  title: "The health check Render relies on"
+  question: How does the hosting platform know the API really works?
+  summary: "A deep health check exercises the real dependencies and returns 503 on failure, without leaking details."
+  steps:
+    - title: Touch the database and the spatial extension
+      where: "src/api/main.py::health_check"
+      code: |
+        accidents = con.execute("SELECT COUNT(*) FROM road_accidents").fetchone()[0]
+        con.execute("SELECT ST_Point(0, 0)").fetchone()
+      explain: "The old check returned 'ok' without touching anything, so Render showed a broken API as healthy."
+    - title: Report failure without details
+      where: "src/api/main.py::health_check"
+      code: 'return JSONResponse(status_code=503, content={"status": "unavailable", "error": type(exc).__name__})'
+      explain: "503 tells the platform not to route traffic here; only the error type is shown, never paths or messages."
+
+# =============================== projectViewer ===============================
+- id: pv-map-repo
+  project: project-viewer
+  order: 1
+  stage: p1
+  title: "Mapping a repository into a world"
+  question: How does a folder of Python files become a map of functions and links, in seconds?
+  summary: "Discover files, reuse cached facts by content hash, parse the rest (in parallel when worth it), then link everything in memory."
+  steps:
+    - title: Read the project's files (git-aware)
+      where: "src/projectviewer/analyzers/python/mapper.py::map_repo"
+      code: "items = [(rel, (root / rel).read_bytes()) for rel in discover(root)]"
+      explain: "discover() asks git for the files, so ignored files (virtual environments, build output) are skipped."
+    - title: Reuse cached facts by content
+      where: "src/projectviewer/analyzers/python/mapper.py::_analyse"
+      code: "key = Cache.key(EXTRACTOR_VERSION, rel, data) if cache else None"
+      explain: "The key is a hash of analyser version + path + file bytes. An unchanged file hits the cache, on any branch, in any clone."
+      params:
+        - { name: EXTRACTOR_VERSION, value: "bumped when facts change shape", why: "Improving the analyser automatically invalidates old results." }
+    - title: Hash exactly what produced the result
+      where: "src/projectviewer/cache.py::Cache.key"
+      code: "h = hashlib.sha256()"
+      explain: "SHA-256 over the three inputs, separated by zero bytes so 'ab'+'c' can't collide with 'a'+'bc'."
+    - title: Store results atomically
+      where: "src/projectviewer/cache.py::Cache.put"
+      code: "os.replace(tmp, p)  # atomic: readers never see a half-written file"
+      explain: "Parallel workers may write the same entry; each writes its own temp file and renames it."
+    - title: Parallel only when it pays off
+      where: "src/projectviewer/analyzers/python/mapper.py"
+      code: "PARALLEL_MIN_FILES = 64"
+      explain: "Starting worker processes costs time; below 64 cache misses, parsing serially is faster."
+      choice: "A threshold instead of 'always parallel': small edits stay instant (18 ms warm on projectViewer itself)."
+
+- id: pv-live-world
+  project: project-viewer
+  order: 2
+  stage: p2
+  title: "Keeping the browser up to date"
+  question: How does the map update as you save files, without re-analysing on every poll?
+  summary: "A cheap fingerprint decides whether anything changed; only then is the project re-mapped; ETags make unchanged polls nearly free."
+  steps:
+    - title: Fingerprint from file metadata
+      where: "src/projectviewer/server.py::Project.fingerprint"
+      code: "last = max(last, st.st_mtime_ns)"
+      explain: "Paths, modification times and sizes are hashed: no file contents are read, so it's fast."
+      choice: "Dirty checking by metadata instead of reading files: microseconds instead of seconds."
+    - title: Re-map only when the fingerprint changed
+      where: "src/projectviewer/server.py::Project.current"
+      code: |
+        if v != self._version:
+            world = map_repo(self.root, cache=self.cache)
+      explain: "The world, its JSON and a gzipped copy are kept in memory until something changes."
+    - title: Compress once, serve many times
+      where: "src/projectviewer/server.py::Project.current"
+      code: "self._gz = gzip.compress(self._body, compresslevel=5)"
+      params:
+        - { name: compresslevel, value: "5", why: "A middle setting: most of the size saving at a fraction of the CPU cost of level 9." }
+      explain: "Large worlds shrink several times over the wire."
+    - title: Answer "not modified" when the client is current
+      where: "src/projectviewer/server.py"
+      code: 'if self.headers.get("If-None-Match") == etag:'
+      explain: "The browser sends the version it has; if it matches, the server replies 304 with no body."
+
+- id: pv-ai-hook
+  project: project-viewer
+  order: 3
+  stage: p4
+  title: "An AI edit appears in the viewer"
+  question: How does Claude Code's work show up live, without ever slowing it down?
+  summary: "A tiny hook process turns the event into JSON and posts it with a 0.3 s timeout; the server checks a header and a size limit; the browser polls the feed."
+  steps:
+    - title: Keep only what's needed (and prompts only if allowed)
+      where: "src/projectviewer/hook.py::event_from_hook"
+      code: |
+        if prompts and raw.get("prompt"):
+            ev["prompt"] = raw["prompt"][:MAX_PROMPT]
+      explain: "The event carries the tool, the file and the session; prompt text only with --prompts, truncated to 500 characters."
+    - title: Post with a short timeout, ignore failures
+      where: "src/projectviewer/hook.py::send"
+      code: "urllib.request.urlopen(req, timeout=timeout).close()"
+      params:
+        - { name: timeout, value: "0.3 s", why: "The agent waits for hooks; a closed viewer must cost almost nothing." }
+      explain: "Any error (viewer closed, port busy) is swallowed."
+    - title: Always succeed
+      where: "src/projectviewer/hook.py::main"
+      code: "except BaseException:  # noqa: BLE001 - including SystemExit from argparse: always exit 0"
+      explain: "Exit code 2 would block Claude Code; even a bad command-line argument must exit 0."
+      choice: "Fail-safe over fail-loud: an observer must never break what it observes."
+    - title: The server only accepts its own hook
+      where: "src/projectviewer/server.py"
+      code: 'if self.headers.get("X-ProjectViewer") != "1":'
+      explain: "A web page can't add custom headers to a simple cross-site post, so this blocks other sites from injecting events. A size limit (16 KB) stops oversized posts."
+
+# =============================== Learning app ===============================
+- id: la-sync
+  project: learning-app
+  order: 1
+  stage: L2
+  title: "Syncing from the project repositories"
+  question: How does this site learn what changed in the projects?
+  summary: "Clone (or update) each public repo, import its records with links rewritten, read its code, refuse anything private."
+  steps:
+    - title: Clone with history but fetch file contents lazily
+      where: "scripts/sync-sources.mjs::checkout"
+      code: "execFileSync('git', ['clone', '--quiet', '--filter=blob:none', `${source.repo}.git`, dir]);"
+      params:
+        - { name: "--filter=blob:none", value: "partial clone", why: "Full history (for commit and PR counts) without downloading every old version of every file." }
+      explain: "Only the main branch is read: what is merged is what is taught."
+    - title: Refuse private data at the boundary
+      where: "scripts/sync-sources.mjs::guard"
+      code: "if (hit) throw new Error(`${where} contains ${what} (${hit[0]}). Fix it in the source repo first.`);"
+      explain: "Home-directory paths and email addresses stop the sync. It caught a test email on its first run."
+    - title: Rewrite relative links to GitHub
+      where: "scripts/sync-sources.mjs::rewriteLinks"
+      code: "return `](${source.repo}/${kind}/main/${resolved}${hash ? `#${hash}` : ''})`;"
+      explain: "A record's link to ../roadmap.md must point somewhere real on this site: the file on GitHub."
+    - title: Read the code
+      where: "scripts/sync-sources.mjs::readCode"
+      code: "if (source.code === 'python') execFileSync('python3', [join(ROOT, 'scripts', 'read_python.py'), repoDir, out], { stdio: 'inherit' });"
+      explain: "Python is read with Python's own parser; TypeScript with the TypeScript compiler's parser."
+
+- id: la-page-build
+  project: learning-app
+  order: 2
+  stage: L2
+  title: "Building one project page"
+  question: What happens between the YAML files and the page you're reading?
+  summary: "The middleware scopes the sidebar to one project, a plugin expands acronyms, a wrapper loads data, an island renders it."
+  steps:
+    - title: Keep only this project's sidebar
+      where: "src/routeData.ts"
+      code: "const group = (route.sidebar as Entry[]).find((e) => e.type === 'group' && e.label === AREAS[area].label);"
+      explain: "The full sidebar is defined once; each page keeps only its own area's group, and previous/next links stay inside it."
+    - title: Spell out each acronym once
+      where: "src/lib/acronyms.mjs::splitAcronyms"
+      code: "const expand = !seen.has(short) && !alreadySpelled;"
+      explain: "The first use in a page (or card) becomes 'ADR (Architecture Decision Record)'; later uses show the full form on hover."
+    - title: Load the data at build time
+      where: "src/components/Decisions.astro"
+      code: ".filter((d) => d.project === project)"
+      explain: "The wrapper reads the validated collection, keeps this project's entries and links each card to its imported ADR."
+      choice: "Container/presentational split: the React component never knows where data comes from."
+    - title: Hydrate only when visible
+      where: "src/components/Decisions.astro"
+      code: "<DecisionExplorer client:visible decisions={decisions} />"
+      explain: "The cards are in the HTML already; their JavaScript loads when they scroll into view."
+
+- id: la-decision-pick
+  project: learning-app
+  order: 3
+  stage: L1
+  title: "Making a decision on a card"
+  question: What happens when you pick an option?
+  summary: "State in React, saved to the browser with graceful degradation, loaded after mount so server and browser agree."
+  steps:
+    - title: Load saved picks after the page has mounted
+      where: "src/components/DecisionExplorer.tsx::DecisionExplorer"
+      code: "useEffect(() => setPicks(load()), []);"
+      explain: "The server can't see your browser storage. Loading after mount means the first render matches the server's HTML."
+    - title: Compare your pick with the project's
+      where: "src/components/DecisionExplorer.tsx::Card"
+      code: "const matched = pick === d.chosen;"
+      explain: "Revealed after you choose: every option's pros and cons, the reasons, and where your judgement differed."
+    - title: Save, and survive if saving fails
+      where: "src/components/DecisionExplorer.tsx::save"
+      code: "localStorage.setItem(KEY, JSON.stringify(picks));"
+      explain: "Wrapped in try/catch: in private mode the cards still work; only remembering picks is lost."

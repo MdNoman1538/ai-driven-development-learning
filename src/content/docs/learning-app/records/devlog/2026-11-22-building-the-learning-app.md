@@ -7,11 +7,11 @@ record:
   project: learning-app
   kind: devlog
   source: https://github.com/MdNoman1538/ai-driven-development-learning/blob/main/docs/devlog/2026-11-22-building-the-learning-app.md
-  commit: "1917421"
+  commit: e8b8ef4
 ---
 
 :::note[Original record]
-Imported unchanged from [`docs/devlog/2026-11-22-building-the-learning-app.md`](https://github.com/MdNoman1538/ai-driven-development-learning/blob/main/docs/devlog/2026-11-22-building-the-learning-app.md) at commit `1917421`. It is the project's own record; the teaching pages explain it.
+Imported unchanged from [`docs/devlog/2026-11-22-building-the-learning-app.md`](https://github.com/MdNoman1538/ai-driven-development-learning/blob/main/docs/devlog/2026-11-22-building-the-learning-app.md) at commit `e8b8ef4`. It is the project's own record; the teaching pages explain it.
 :::
 
 ## Why it exists

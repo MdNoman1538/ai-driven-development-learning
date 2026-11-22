@@ -159,6 +159,17 @@ function readCode(source, repoDir) {
   if (source.code === 'python') execFileSync('python3', [join(ROOT, 'scripts', 'read_python.py'), repoDir, out], { stdio: 'inherit' });
   else if (source.code === 'typescript') execFileSync('node', [join(ROOT, 'scripts', 'read-typescript.mjs'), repoDir, out], { stdio: 'inherit' });
   const facts = JSON.parse(readFileSync(out, 'utf8'));
+  // Extra parts in another language (e.g. projectViewer's JavaScript viewer), merged with a path prefix.
+  for (const extra of source.extraCode ?? []) {
+    const tmp = join(ROOT, '.cache', `${source.id}-${extra.dir}.json`);
+    execFileSync('node', [join(ROOT, 'scripts', 'read-typescript.mjs'), join(repoDir, extra.dir), tmp], { stdio: 'inherit' });
+    const more = JSON.parse(readFileSync(tmp, 'utf8'));
+    const pre = (id) => `${extra.dir}/${id}`;
+    for (const f of more.files) facts.files.push({ ...f, path: pre(f.path) });
+    for (const s of more.symbols)
+      facts.symbols.push({ ...s, id: pre(s.id), file: pre(s.file), calls: s.calls.map(pre), called_by: s.called_by.map(pre) });
+    writeFileSync(out, JSON.stringify(facts, null, 1) + '\n');
+  }
   for (const f of facts.files) guard(f.source, `${source.id}:${f.path}`);
 }
 

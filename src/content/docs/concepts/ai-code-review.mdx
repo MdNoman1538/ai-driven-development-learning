@@ -4,6 +4,13 @@ description: "A strong reviewer as a second opinion, labelled findings, and eval
 concept:
   summary: "A strong reviewer as a second opinion, labelled findings, and evals before any fine-tuning."
   projects: [road-risk, project-viewer]
+  uses:
+    road-risk:
+      how: Found 8 and 9 real issues in two PRs; all fixed test-first (ADR-0005).
+      stage: p0
+    project-viewer:
+      how: Found 6 issues in the changes PR; all fixed with tests.
+      stage: p3
   level: core
 ---
 
