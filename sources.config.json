@@ -1,0 +1,30 @@
+{
+  "$comment": "Where the site's records come from. Only public repositories, read from their main branch (what is merged is what is taught).",
+  "sources": [
+    {
+      "id": "road-risk",
+      "repo": "https://github.com/MdNoman1538/Finland-Road-Risk-Intelligence",
+      "python": ["pyproject.toml"],
+      "node": [],
+      "workflows": [".github/workflows/ci.yml"],
+      "records": ["docs/decisions", "docs/devlog", "docs/roadmap.md", "docs/project-status.md", "docs/architecture.md"]
+    },
+    {
+      "id": "project-viewer",
+      "repo": "https://github.com/MdNoman1538/projectViewer",
+      "python": ["pyproject.toml"],
+      "node": ["viewer/package.json"],
+      "workflows": [".github/workflows/ci.yml"],
+      "records": ["docs/decisions", "docs/devlog", "docs/roadmap.md", "docs/project-status.md"]
+    },
+    {
+      "id": "learning-app",
+      "self": true,
+      "repo": "https://github.com/MdNoman1538/ai-driven-development-learning",
+      "python": [],
+      "node": ["package.json"],
+      "workflows": [".github/workflows/ci.yml", ".github/workflows/deploy.yml"],
+      "records": ["docs/decisions", "docs/devlog"]
+    }
+  ]
+}

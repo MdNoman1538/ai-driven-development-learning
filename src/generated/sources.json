@@ -1,0 +1,597 @@
+{
+  "road-risk": {
+    "repo": "https://github.com/MdNoman1538/Finland-Road-Risk-Intelligence",
+    "commit": "1df8e5a",
+    "commits": 33,
+    "mergedPullRequests": 8,
+    "firstCommit": "2026-11-20",
+    "lastCommit": "2026-11-22",
+    "python": ">=3.12,<3.13",
+    "dependencies": [
+      {
+        "name": "duckdb",
+        "spec": "duckdb>=1.1.0",
+        "group": "runtime",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "pandas",
+        "spec": "pandas>=2.2.0",
+        "group": "runtime",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "pydantic",
+        "spec": "pydantic>=2.7.0",
+        "group": "runtime",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "fastapi",
+        "spec": "fastapi>=0.115.0",
+        "group": "runtime",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "uvicorn",
+        "spec": "uvicorn>=0.30.0",
+        "group": "runtime",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "streamlit",
+        "spec": "streamlit>=1.38.0",
+        "group": "runtime",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "folium",
+        "spec": "folium>=0.17.0",
+        "group": "runtime",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "streamlit-folium",
+        "spec": "streamlit-folium>=0.22.0",
+        "group": "runtime",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "scikit-learn",
+        "spec": "scikit-learn>=1.5.0",
+        "group": "runtime",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "joblib",
+        "spec": "joblib>=1.4.0",
+        "group": "runtime",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "pytest",
+        "spec": "pytest>=8.0",
+        "group": "dev",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "httpx",
+        "spec": "httpx>=0.27",
+        "group": "dev",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "ruff",
+        "spec": "ruff>=0.17.6",
+        "group": "dev",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "pre-commit",
+        "spec": "pre-commit>=4.0",
+        "group": "dev",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      }
+    ],
+    "workflows": [
+      {
+        "file": ".github/workflows/ci.yml",
+        "name": "CI",
+        "jobs": [
+          "Lint & dependency checks",
+          "Tests"
+        ],
+        "actions": [
+          "actions/cache@v6.1.0",
+          "actions/checkout@v7.0.1",
+          "astral-sh/setup-uv@v10.4.0"
+        ]
+      }
+    ],
+    "records": {
+      "decisions": [
+        {
+          "kind": "decisions",
+          "slug": "road-risk/records/decisions/0001-llm-is-not-the-risk-decision-maker",
+          "number": 1,
+          "status": "Accepted",
+          "date": "2026-11-21",
+          "title": "ADR-0001: The LLM is not the risk decision-maker"
+        },
+        {
+          "kind": "decisions",
+          "slug": "road-risk/records/decisions/0002-lighting-from-sun-position-instead-of-clock-time",
+          "number": 2,
+          "status": "Accepted",
+          "date": "2026-11-21",
+          "title": "ADR-0002: Use lighting condition (from sun position) instead of clock time"
+        },
+        {
+          "kind": "decisions",
+          "slug": "road-risk/records/decisions/0003-duckdb-as-data-factory-precomputed-tiles-in-car",
+          "number": 3,
+          "status": "Accepted",
+          "date": "2026-11-21",
+          "title": "ADR-0003: DuckDB is the offline \"data factory\"; the car uses precomputed in-memory risk tiles"
+        },
+        {
+          "kind": "decisions",
+          "slug": "road-risk/records/decisions/0004-development-workflow",
+          "number": 4,
+          "status": "Accepted",
+          "date": "2026-11-21",
+          "title": "ADR-0004: Development workflow: GitHub Flow, small PRs, test-first fixes, human review of AI-written code"
+        },
+        {
+          "kind": "decisions",
+          "slug": "road-risk/records/decisions/0005-ai-code-review-strategy",
+          "number": 5,
+          "status": "Accepted (by the owner, 2026-11-21)",
+          "date": "2026-11-21",
+          "title": "ADR-0005: AI code review: use an existing strong reviewer now, fine-tune only after evals exist"
+        },
+        {
+          "kind": "decisions",
+          "slug": "road-risk/records/decisions/0006-module-architecture",
+          "number": 6,
+          "status": "Accepted",
+          "date": "2026-11-21",
+          "title": "ADR-0006: Module architecture: one job per top-level module"
+        },
+        {
+          "kind": "decisions",
+          "slug": "road-risk/records/decisions/0007-database-as-versioned-release-asset",
+          "number": 7,
+          "status": "Accepted",
+          "date": "2026-11-22",
+          "title": "ADR-0007: The crash database is a versioned GitHub Release asset, pinned by a lock file"
+        },
+        {
+          "kind": "decisions",
+          "slug": "road-risk/records/decisions/0008-crash-key-and-missing-values",
+          "number": 8,
+          "status": "Accepted",
+          "date": "2026-11-22",
+          "title": "ADR-0008: Crashes are keyed by (year, accident_id); missing values are NULL; cleaning is code"
+        }
+      ],
+      "devlog": [
+        {
+          "kind": "devlog",
+          "slug": "road-risk/records/devlog/2026-11-21-module-architecture",
+          "date": "2026-11-21",
+          "title": "2026-11-21 — Module architecture"
+        },
+        {
+          "kind": "devlog",
+          "slug": "road-risk/records/devlog/2026-11-21-phase-0-workflow",
+          "date": "2026-11-21",
+          "title": "2026-11-21 — Phase 0 kickoff: development workflow"
+        },
+        {
+          "kind": "devlog",
+          "slug": "road-risk/records/devlog/2026-11-21-repo-review-and-planning",
+          "date": "2026-11-21",
+          "title": "2026-11-21 — Repo review, data checks and planning"
+        },
+        {
+          "kind": "devlog",
+          "slug": "road-risk/records/devlog/2026-11-22-merge-and-error-handling",
+          "date": "2026-11-22",
+          "title": "2026-11-22: Merging the Phase 0 stack, protecting main, hiding internal errors"
+        }
+      ],
+      "overview": [
+        {
+          "kind": "overview",
+          "slug": "road-risk/records/roadmap",
+          "title": "Roadmap"
+        },
+        {
+          "kind": "overview",
+          "slug": "road-risk/records/project-status",
+          "title": "Project Status"
+        },
+        {
+          "kind": "overview",
+          "slug": "road-risk/records/architecture",
+          "title": "Architecture"
+        }
+      ]
+    }
+  },
+  "project-viewer": {
+    "repo": "https://github.com/MdNoman1538/projectViewer",
+    "commit": "d892c67",
+    "commits": 28,
+    "mergedPullRequests": 5,
+    "firstCommit": "2026-11-21",
+    "lastCommit": "2026-11-22",
+    "python": ">=3.12",
+    "dependencies": [
+      {
+        "name": "pytest",
+        "spec": "pytest>=8.0",
+        "group": "dev",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "ruff",
+        "spec": "ruff>=0.17.6",
+        "group": "dev",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "pre-commit",
+        "spec": "pre-commit>=4.0",
+        "group": "dev",
+        "file": "pyproject.toml",
+        "ecosystem": "python"
+      },
+      {
+        "name": "@deck.gl/core",
+        "version": "9.4.1",
+        "group": "runtime",
+        "file": "viewer/package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "@deck.gl/layers",
+        "version": "9.4.1",
+        "group": "runtime",
+        "file": "viewer/package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "@deck.gl/react",
+        "version": "9.4.1",
+        "group": "runtime",
+        "file": "viewer/package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "d3-hierarchy",
+        "version": "3.1.2",
+        "group": "runtime",
+        "file": "viewer/package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "react",
+        "version": "18.3.1",
+        "group": "runtime",
+        "file": "viewer/package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "react-dom",
+        "version": "18.3.1",
+        "group": "runtime",
+        "file": "viewer/package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "@vitejs/plugin-react",
+        "version": "4.7.0",
+        "group": "dev",
+        "file": "viewer/package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "vite",
+        "version": "5.4.21",
+        "group": "dev",
+        "file": "viewer/package.json",
+        "ecosystem": "node"
+      }
+    ],
+    "workflows": [
+      {
+        "file": ".github/workflows/ci.yml",
+        "name": "CI",
+        "jobs": [
+          "Lint & lockfile",
+          "Tests",
+          "Viewer"
+        ],
+        "actions": [
+          "actions/checkout@v7.0.1",
+          "actions/setup-node@v7.1.0",
+          "astral-sh/setup-uv@v10.4.0"
+        ]
+      }
+    ],
+    "records": {
+      "decisions": [
+        {
+          "kind": "decisions",
+          "slug": "project-viewer/records/decisions/0001-local-subscription-service",
+          "number": 1,
+          "status": "Accepted (built in Phase 4)",
+          "date": "2026-11-21",
+          "title": "ADR-0001: A local background service that projects subscribe to; recording is deterministic"
+        },
+        {
+          "kind": "decisions",
+          "slug": "project-viewer/records/decisions/0002-world-format",
+          "number": 2,
+          "status": "Accepted",
+          "date": "2026-11-21",
+          "title": "ADR-0002: Language-neutral world format `project-world/1` with honest link certainty"
+        },
+        {
+          "kind": "decisions",
+          "slug": "project-viewer/records/decisions/0003-incremental-cached-analysis",
+          "number": 3,
+          "status": "Accepted",
+          "date": "2026-11-21",
+          "title": "ADR-0003: Two-pass analysis with a content-addressed per-file cache"
+        },
+        {
+          "kind": "decisions",
+          "slug": "project-viewer/records/decisions/0004-development-workflow",
+          "number": 4,
+          "status": "Accepted; merge strategy superseded by ADR-0007 (merge commits)",
+          "date": "2026-11-21",
+          "title": "ADR-0004: Development workflow: GitHub Flow, small PRs, test-first fixes, human review of AI-written code"
+        },
+        {
+          "kind": "decisions",
+          "slug": "project-viewer/records/decisions/0005-viewer-nested-treemap-city",
+          "number": 5,
+          "status": "Superseded by ADR-0006 (one level at a time, folder blocks)",
+          "date": "2026-11-21",
+          "title": "ADR-0005: New viewer, a nested treemap shown as a 2.5D city (not a port of the v5 viewer)"
+        },
+        {
+          "kind": "decisions",
+          "slug": "project-viewer/records/decisions/0006-folder-levels-sized-by-functions",
+          "number": 6,
+          "status": "Accepted (supersedes ADR-0005's \"everything at once\" map)",
+          "date": "2026-11-21",
+          "title": "ADR-0006: Show one folder level at a time; blocks sized by number of functions"
+        },
+        {
+          "kind": "decisions",
+          "slug": "project-viewer/records/decisions/0007-merge-commits-keep-change-notes",
+          "number": 7,
+          "status": "Accepted (supersedes the \"squash merge\" part of ADR-0004)",
+          "date": "2026-11-21",
+          "title": "ADR-0007: Merge pull requests with a merge commit, so per-commit change notes survive"
+        }
+      ],
+      "devlog": [
+        {
+          "kind": "devlog",
+          "slug": "project-viewer/records/devlog/2026-11-21-python-cartographer",
+          "date": "2026-11-21",
+          "title": "2026-11-21 — Start of projectViewer, and the Python cartographer"
+        }
+      ],
+      "overview": [
+        {
+          "kind": "overview",
+          "slug": "project-viewer/records/roadmap",
+          "title": "Roadmap"
+        },
+        {
+          "kind": "overview",
+          "slug": "project-viewer/records/project-status",
+          "title": "Project Status"
+        }
+      ]
+    }
+  },
+  "learning-app": {
+    "repo": "https://github.com/MdNoman1538/ai-driven-development-learning",
+    "commit": "d5f128c",
+    "commits": 1,
+    "mergedPullRequests": 0,
+    "firstCommit": "2026-11-22",
+    "lastCommit": "2026-11-22",
+    "python": null,
+    "dependencies": [
+      {
+        "name": "@astrojs/react",
+        "version": "7.1.4",
+        "group": "runtime",
+        "file": "package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "@astrojs/starlight",
+        "version": "0.42.10",
+        "group": "runtime",
+        "file": "package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "astro",
+        "version": "7.4.7",
+        "group": "runtime",
+        "file": "package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "react",
+        "version": "19.3.1",
+        "group": "runtime",
+        "file": "package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "react-dom",
+        "version": "19.3.1",
+        "group": "runtime",
+        "file": "package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "sharp",
+        "version": "0.35.5",
+        "group": "runtime",
+        "file": "package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "@astrojs/check",
+        "version": "0.9.12",
+        "group": "dev",
+        "file": "package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "@types/react",
+        "version": "19.3.0",
+        "group": "dev",
+        "file": "package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "@types/react-dom",
+        "version": "19.3.0",
+        "group": "dev",
+        "file": "package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "smol-toml",
+        "version": "1.9.1",
+        "group": "dev",
+        "file": "package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "typescript",
+        "version": "6.0.3",
+        "group": "dev",
+        "file": "package.json",
+        "ecosystem": "node"
+      },
+      {
+        "name": "yaml",
+        "version": "2.9.1",
+        "group": "dev",
+        "file": "package.json",
+        "ecosystem": "node"
+      }
+    ],
+    "workflows": [
+      {
+        "file": ".github/workflows/ci.yml",
+        "name": "CI",
+        "jobs": [
+          "Check & build"
+        ],
+        "actions": [
+          "actions/checkout@v7.0.1",
+          "actions/setup-node@v7.1.0"
+        ]
+      },
+      {
+        "file": ".github/workflows/deploy.yml",
+        "name": "Deploy",
+        "jobs": [
+          "Build site",
+          "Deploy to GitHub Pages"
+        ],
+        "actions": [
+          "actions/checkout@v7.0.1",
+          "actions/configure-pages@v6.0.0",
+          "actions/deploy-pages@v5.0.1",
+          "actions/setup-node@v7.1.0",
+          "actions/upload-pages-artifact@v5.0.0"
+        ]
+      }
+    ],
+    "records": {
+      "decisions": [
+        {
+          "kind": "decisions",
+          "slug": "learning-app/records/decisions/0001-static-site-astro-starlight",
+          "number": 1,
+          "status": "Accepted",
+          "date": "2026-11-22",
+          "title": "ADR-0001: A static site built with Astro + Starlight, interactive only where it teaches"
+        },
+        {
+          "kind": "decisions",
+          "slug": "learning-app/records/decisions/0002-imported-records-and-typed-teaching-layer",
+          "number": 2,
+          "status": "Accepted",
+          "date": "2026-11-22",
+          "title": "ADR-0002: Two layers: imported records and a typed teaching layer"
+        },
+        {
+          "kind": "decisions",
+          "slug": "learning-app/records/decisions/0003-coverage-check-fails-the-build",
+          "number": 3,
+          "status": "Accepted",
+          "date": "2026-11-22",
+          "title": "ADR-0003: The build fails when an explanation is missing"
+        },
+        {
+          "kind": "decisions",
+          "slug": "learning-app/records/decisions/0004-public-content-rules",
+          "number": 4,
+          "status": "Accepted",
+          "date": "2026-11-22",
+          "title": "ADR-0004: Public content rules, enforced by the sync"
+        },
+        {
+          "kind": "decisions",
+          "slug": "learning-app/records/decisions/0005-pick-first-then-reveal",
+          "number": 5,
+          "status": "Accepted",
+          "date": "2026-11-22",
+          "title": "ADR-0005: Pick first, then reveal"
+        }
+      ],
+      "devlog": [
+        {
+          "kind": "devlog",
+          "slug": "learning-app/records/devlog/2026-11-22-building-the-learning-app",
+          "date": "2026-11-22",
+          "title": "2026-11-22: Building the learning app"
+        }
+      ],
+      "overview": []
+    }
+  }
+}
