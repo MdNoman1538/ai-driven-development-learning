@@ -35,6 +35,10 @@ export const onRequest = defineRouteMiddleware((context) => {
   route.head.push({
     tag: 'style',
     attrs: {},
-    content: `html:root:root, html:root[data-theme='dark']{--sl-color-accent:${dark};--lx-area:${dark}} html:root[data-theme='light']{--sl-color-accent:${light};--lx-area:${light}}`,
+    content:
+      `html:root:root, html:root[data-theme='dark']{--sl-color-accent:${dark};--lx-area:${dark};` +
+      `--sl-color-accent-low:color-mix(in srgb, ${dark} 22%, #0b0f19);--sl-color-accent-high:color-mix(in srgb, ${dark} 40%, white)}` +
+      ` html:root[data-theme='light']{--sl-color-accent:${light};--lx-area:${light};` +
+      `--sl-color-accent-low:color-mix(in srgb, ${light} 14%, white);--sl-color-accent-high:color-mix(in srgb, ${light} 70%, black)}`,
   });
 });
