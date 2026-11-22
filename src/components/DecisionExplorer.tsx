@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import Inline from './Inline';
+import Inline, { AcronymScope } from './Inline';
 
 type Option = { name: string; summary: string; pros: string[]; cons: string[] };
 type Decision = {
@@ -44,6 +44,7 @@ function Card({ d, pick, onPick, onReset }: { d: Decision; pick: number | undefi
   const revealed = pick !== undefined || peek;
   const matched = pick === d.chosen;
   return (
+    <AcronymScope>
     <article className="lx-dec" id={d.id}>
       <header className="lx-dec__head">
         <span className="lx-badge">{d.ref}</span>
@@ -108,6 +109,7 @@ function Card({ d, pick, onPick, onReset }: { d: Decision; pick: number | undefi
         </div>
       )}
     </article>
+    </AcronymScope>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Inline from './Inline';
+import Inline, { AcronymScope } from './Inline';
 
 type Step = { id: string; title: string; stage: string; happens: string; why: string; where: string; before?: string; after?: string };
 
@@ -22,6 +22,7 @@ export default function DataJourney({ steps }: { steps: Step[] }) {
           </li>
         ))}
       </ol>
+      <AcronymScope>
       <section className="lx-stepcard" aria-live="polite">
         <span className="lx-badge">{s.stage}</span>
         <h3>
@@ -58,6 +59,7 @@ export default function DataJourney({ steps }: { steps: Step[] }) {
           </button>
         </div>
       </section>
+      </AcronymScope>
     </div>
   );
 }

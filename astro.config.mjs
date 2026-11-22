@@ -1,26 +1,57 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import react from '@astrojs/react';
+import rehypeAcronyms from './src/lib/rehype-acronyms.mjs';
 
-/** One sidebar group per project: the same sections everywhere, so you always know where to look. */
-function project(label, id, extra = []) {
+const page = (label, slug) => ({ label, slug });
+
+/** Every project has the same sections, grouped the way an architect reads a system:
+ *  understand it → look inside the code → see the decisions → learn from its history. */
+function project(label, id, { dataJourney = false, api = true } = {}) {
   return {
     label,
-    collapsed: false,
     items: [
-      { label: 'Overview', slug: id },
-      { label: 'Architecture', slug: `${id}/architecture` },
-      ...extra,
-      { label: 'Decisions: you choose', slug: `${id}/decisions` },
-      { label: 'Tech stack', slug: `${id}/stack` },
-      { label: 'Journey', slug: `${id}/journey` },
       {
-        label: 'Original records',
-        collapsed: true,
+        label: 'Understand the system',
         items: [
-          { label: 'All records', slug: `${id}/records` },
-          { label: 'Decisions (ADRs)', collapsed: true, items: [{ autogenerate: { directory: `${id}/records/decisions` } }] },
-          { label: 'Development log', collapsed: true, items: [{ autogenerate: { directory: `${id}/records/devlog` } }] },
+          page('Overview', id),
+          page('Quality attributes', `${id}/quality`),
+          page('Architecture (C4 levels)', `${id}/architecture`),
+          ...(dataJourney ? [page('A crash’s journey', `${id}/data-journey`)] : []),
+        ],
+      },
+      {
+        label: 'Inside the code',
+        items: [
+          page('Walkthroughs', `${id}/walkthroughs`),
+          page('Code reference', `${id}/code`),
+          ...(api ? [page('API reference', `${id}/api`)] : []),
+          page('Algorithms & data science', `${id}/algorithms`),
+          page('Design patterns', `${id}/patterns`),
+        ],
+      },
+      {
+        label: 'Decisions',
+        items: [
+          page('Decisions: you choose', `${id}/decisions`),
+          page('Trade-offs: why this, not that', `${id}/tradeoffs`),
+          page('Tech stack', `${id}/stack`),
+        ],
+      },
+      {
+        label: 'Learn & history',
+        items: [
+          page('Concepts in this project', `${id}/concepts`),
+          page('Journey', `${id}/journey`),
+          {
+            label: 'Original records',
+            collapsed: true,
+            items: [
+              page('All records', `${id}/records`),
+              { label: 'Architecture Decision Records', collapsed: true, items: [{ autogenerate: { directory: `${id}/records/decisions` } }] },
+              { label: 'Development log', collapsed: true, items: [{ autogenerate: { directory: `${id}/records/devlog` } }] },
+            ],
+          },
         ],
       },
     ],
@@ -30,35 +61,52 @@ function project(label, id, extra = []) {
 export default defineConfig({
   site: 'https://mdnoman1538.github.io',
   base: '/ai-driven-development-learning',
+  markdown: { rehypePlugins: [rehypeAcronyms] },
   integrations: [
     starlight({
       title: 'AI Driven Development Learning',
-      description: 'Learn AI-driven development through real projects: the reasoning, architecture and decisions behind them.',
+      description: 'Learn software architecture and AI-driven development through real projects: the reasoning, the code and the decisions behind them.',
+      logo: { src: './src/assets/logo.svg', replacesTitle: false },
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/MdNoman1538/ai-driven-development-learning' }],
       customCss: ['./src/styles/custom.css'],
+      routeMiddleware: './src/routeData.ts',
       lastUpdated: true,
       sidebar: [
-        {
-          label: 'Start here',
-          items: [
-            { label: 'How to learn here', slug: 'start/how-to-learn' },
-            { label: 'What is AI-driven development?', slug: 'start/ai-driven-development' },
-            { label: 'How this site stays current', slug: 'start/how-this-site-stays-current' },
-          ],
-        },
-        project('Road Risk', 'road-risk', [{ label: 'A crash’s journey', slug: 'road-risk/data-journey' }]),
+        project('Road Risk', 'road-risk', { dataJourney: true }),
         project('projectViewer', 'project-viewer'),
-        project('This learning app', 'learning-app'),
+        project('This learning app', 'learning-app', { api: false }),
         {
-          label: 'Across all projects',
+          label: 'Combined knowledge',
           items: [
-            { label: 'Concept library', slug: 'concepts' },
-            { label: 'Whole tech stack', slug: 'stack' },
-            { label: 'The full journey', slug: 'journey' },
-            { label: 'Glossary', slug: 'glossary' },
+            page('Overview', 'knowledge'),
+            {
+              label: 'Start here',
+              items: [
+                page('How to learn here', 'start/how-to-learn'),
+                page('What is AI-driven development?', 'start/ai-driven-development'),
+                page('How this site stays current', 'start/how-this-site-stays-current'),
+              ],
+            },
+            {
+              label: 'Architecture knowledge',
+              items: [
+                page('Architect’s competency map', 'knowledge/competencies'),
+                page('Architecture styles', 'knowledge/styles'),
+                page('Design pattern catalogue', 'knowledge/patterns'),
+                page('Trade-off library', 'knowledge/tradeoffs'),
+                page('Algorithms & data science', 'knowledge/algorithms'),
+              ],
+            },
+            {
+              label: 'Concepts',
+              items: [page('Concept library', 'concepts'), { label: 'All concepts', collapsed: true, items: [{ autogenerate: { directory: 'concepts' } }] }],
+            },
+            {
+              label: 'Across all projects',
+              items: [page('Whole tech stack', 'stack'), page('The full journey', 'journey'), page('Glossary', 'glossary')],
+            },
           ],
         },
-        { label: 'Concepts', collapsed: true, items: [{ autogenerate: { directory: 'concepts' } }] },
       ],
     }),
     react(),

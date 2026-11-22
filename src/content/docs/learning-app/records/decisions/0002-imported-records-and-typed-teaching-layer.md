@@ -7,11 +7,11 @@ record:
   project: learning-app
   kind: decisions
   source: https://github.com/MdNoman1538/ai-driven-development-learning/blob/main/docs/decisions/0002-imported-records-and-typed-teaching-layer.md
-  commit: 81ca1ea
+  commit: "1917421"
 ---
 
 :::note[Original record]
-Imported unchanged from [`docs/decisions/0002-imported-records-and-typed-teaching-layer.md`](https://github.com/MdNoman1538/ai-driven-development-learning/blob/main/docs/decisions/0002-imported-records-and-typed-teaching-layer.md) at commit `81ca1ea`. It is the project's own record; the teaching pages explain it.
+Imported unchanged from [`docs/decisions/0002-imported-records-and-typed-teaching-layer.md`](https://github.com/MdNoman1538/ai-driven-development-learning/blob/main/docs/decisions/0002-imported-records-and-typed-teaching-layer.md) at commit `1917421`. It is the project's own record; the teaching pages explain it.
 :::
 
 - **Status:** Accepted
