@@ -1,0 +1,53 @@
+---
+title: "Caching by content"
+description: "Making work proportional to the change: pure functions and content-addressed keys."
+concept:
+  summary: "Making work proportional to the change: pure functions and content-addressed keys."
+  projects: [project-viewer]
+  level: advanced
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+A **content-addressed cache** stores a result under a key made from a **hash of the input's content**. Same content, same key, whichever branch, commit or copy of the repo it came from.
+
+## How projectViewer uses it
+
+Pass 1 of the analysis is a pure function of one file. Its result is stored under `sha256(analyser version + path + content)`:
+- A file that hasn't changed is **never parsed again**, even across commits, branches or repos.
+- Improving the analyser changes the version, which **invalidates every old result automatically**.
+- The path is part of the key because module names (and therefore IDs) depend on it.
+
+Results, measured on pandas (1,440 files):
+
+| Case | Time |
+|---|---|
+| No cache, parallel | 4.3 s |
+| Warm cache | 1.6 s |
+| One file edited | 1.65 s |
+
+## The rule that makes it work
+
+The cached step must be **pure**: it may read only its own input. Anything that needs other files belongs in pass 2. Break that rule and the cache returns stale answers.
+
+## The trade-off
+
+The cache grows over time and will need a cleanup command. The warm path still re-reads every cache entry; keeping facts in memory in a background service is the next step.
+
+## Check yourself
+
+<details class="check">
+<summary>Why is the analyser version part of the cache key?</summary>
+
+So that improving the analyser automatically invalidates results computed by the old version.
+
+</details>
+
+<details class="check">
+<summary>Why must the cached step be pure?</summary>
+
+If it depended on other files, a change elsewhere wouldn't change its key, and the cache would return outdated results.
+
+</details>

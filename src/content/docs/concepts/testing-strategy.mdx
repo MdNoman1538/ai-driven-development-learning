@@ -1,0 +1,61 @@
+---
+title: "Testing strategy"
+description: "Unit, integration, characterization and snapshot tests, and why a bug fix starts with a failing test."
+concept:
+  summary: "Unit, integration, characterization and snapshot tests, and why a bug fix starts with a failing test."
+  projects: [road-risk, project-viewer]
+  level: foundation
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+A **test** is code that checks other code automatically. Different kinds answer different questions:
+
+| Kind | Question it answers | Example here |
+|---|---|---|
+| **Unit** | Is this small piece right? | Risk tiers: 74.9 is HIGH, 75.0 is CRITICAL |
+| **Integration** | Do the parts work together? | The engine against the real database |
+| **Characterization** | Did behaviour change by accident? | Oulu, 250 m: 95 crashes, score 57.8, HIGH |
+| **Synthetic data** | Does each rule work, without the real data? | Tiny CSVs in both file formats test every cleaning rule |
+| **Snapshot comparison** | Is the *whole* output identical? | Full engine output for 5 queries, compared byte by byte before and after a change |
+
+## Why it matters
+
+**Tests are the contract with an AI agent.** They say what "correct" means in a form a machine checks on every change. The agent can move fast because the tests catch it when it's wrong.
+
+## Test-first bug fixes
+
+1. Write a test that **fails because of the bug**.
+2. Run it and **see it fail**, for the right reason.
+3. Fix the code until it passes.
+
+A test written *after* the fix might pass for the wrong reason, and you'd never know. Every Road Risk bug fix followed this order, for example reproducing the broken server with an empty extension folder before fixing it.
+
+## The trade-off
+
+Tests are code to maintain, and tests pinned to today's data (characterization) must change deliberately when the data changes. That's the point: the change becomes visible and intentional.
+
+## Check yourself
+
+<details class="check">
+<summary>What does a characterization test protect you from?</summary>
+
+Accidental behaviour changes during a refactor. It pins today's output, so any change to it must be deliberate and explained.
+
+</details>
+
+<details class="check">
+<summary>Why see the test fail before fixing the bug?</summary>
+
+It proves the test can detect the bug. A test that has never failed might be testing nothing.
+
+</details>
+
+<details class="check">
+<summary>Why did the data-cleaning tests use synthetic CSVs?</summary>
+
+They run anywhere (including CI) without the real data, and each row is built to trigger exactly one rule, so a failure points at the rule.
+
+</details>

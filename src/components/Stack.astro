@@ -1,0 +1,17 @@
+---
+import { getCollection } from 'astro:content';
+import StackMap from './StackMap';
+import facts from '../generated/sources.json';
+import { LAYER_NAMES, PROJECT_NAMES } from '../lib/site';
+
+interface Props { project?: string }
+const deps = Object.entries(facts as Record<string, any>).flatMap(([project, f]) =>
+  f.dependencies.map((d: any) => ({ project, name: d.name, version: d.version ?? d.spec.replace(d.name, '').trim() })),
+);
+const order = Object.keys(LAYER_NAMES);
+const tools = (await getCollection('tools'))
+  .map((e) => e.data)
+  .sort((a, b) => order.indexOf(a.layer) - order.indexOf(b.layer))
+  .map((t) => ({ ...t, versions: deps.filter((d) => t.packages.includes(d.name)) }));
+---
+<StackMap client:visible tools={tools} layers={LAYER_NAMES} projects={PROJECT_NAMES} initialProject={Astro.props.project} />

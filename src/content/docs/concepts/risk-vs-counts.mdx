@@ -1,0 +1,45 @@
+---
+title: "Risk vs crash counts"
+description: "Why more crashes doesn't mean more dangerous, and what exposure and Empirical Bayes fix."
+concept:
+  summary: "Why more crashes doesn't mean more dangerous, and what exposure and Empirical Bayes fix."
+  projects: [road-risk]
+  level: advanced
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+**Crash count** is how many crashes happened somewhere. **Risk** is how likely a crash is *for each car that passes*, so it needs **exposure**, the amount of traffic.
+
+## Why it matters
+
+A busy motorway junction may have 50 crashes a year and be relatively safe per vehicle; a quiet rural curve may have 2 and be very dangerous per vehicle. Ranking by counts mostly finds busy roads.
+
+Two more traps:
+- **Sparse data.** Most places have 0–2 crashes in 12 years, so one unlucky crash can make a quiet road look deadly. **Empirical Bayes** pulls each place's estimate towards the average for similar roads, more strongly when it has little data.
+- **Conditions need their own exposure.** Most winter driving in northern Finland happens in the dark, so many crashes in the dark are partly *expected*. Risk in the dark = (share of crashes in the dark) ÷ (share of traffic in the dark).
+
+## How we used it
+
+- **Today's engine** weights crashes by severity, recency (a 5-year half-life) and distance. It's useful for exploring, but it counts crashes, not risk.
+- **Design rule 5** in CLAUDE.md: *risk means crashes relative to exposure, never raw counts alone.*
+- **Phases 1–2** add traffic volumes, map-match crashes to road segments, and compute Empirical Bayes risk per segment and per condition, with confidence intervals.
+- **Recording rules changed** over the years (28,327 crashes in 2014, 8,610 in 2025). Roads didn't get 3× safer, so raw trends must be corrected.
+
+## Check yourself
+
+<details class="check">
+<summary>Why can a road with 2 crashes be more dangerous than one with 50?</summary>
+
+Risk is per exposure. If the first carries 100 cars a day and the second 50,000, the first is far more dangerous per car.
+
+</details>
+
+<details class="check">
+<summary>What problem does Empirical Bayes solve?</summary>
+
+Small numbers. It stops places with very little data from looking extreme by chance, by blending each estimate with the average for similar places.
+
+</details>

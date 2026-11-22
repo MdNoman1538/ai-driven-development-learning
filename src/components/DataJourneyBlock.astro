@@ -1,0 +1,6 @@
+---
+import { getCollection } from 'astro:content';
+import DataJourney from './DataJourney';
+const steps = (await getCollection('steps')).map((e) => e.data).sort((a, b) => a.id.localeCompare(b.id));
+---
+<DataJourney client:visible steps={steps} />

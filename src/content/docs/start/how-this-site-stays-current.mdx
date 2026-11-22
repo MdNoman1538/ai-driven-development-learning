@@ -1,0 +1,33 @@
+---
+title: How this site stays current
+description: Imported records, generated facts, schemas and a coverage check. Why this site can't quietly drift away from the projects.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Documentation usually rots: someone changes the code and forgets the docs. This site is built so that **forgetting is impossible to miss**.
+
+## Four mechanisms
+
+**1. Records are imported, not retyped.** A sync script reads each project's public repository (its `main` branch: what is merged is what is taught) and imports the ADRs, devlogs, roadmaps and status files unchanged. Each imported page names its source file and commit.
+
+**2. Facts are generated.** The same script reads each project's dependency files, CI workflows and git history. The versions and counts you see come from the projects themselves.
+
+**3. Every teaching entry has a schema.** Decision cards, tool cards, architecture views and concepts each have a required shape (a `zod` schema). A decision without options, or a tool without a "why", stops the build like a type error stops a program.
+
+**4. The build fails when an explanation is missing.** A coverage check compares the generated facts with the teaching layer:
+- every dependency of every project must be explained by a tool card
+- every ADR must have a decision card
+- every link from the journey to a decision or concept must point at something real
+
+<Aside type="note" title="Plus one rule for the agent">
+Each project's `CLAUDE.md` says: a change that adds a tool, a concept or a decision also updates this site, in the same piece of work. The coverage check is what makes that rule visible when it's broken.
+</Aside>
+
+## Privacy
+
+The site is public. The importer refuses any record that contains a local home-directory path or an email address, so a leak has to be fixed in the source repository, not hidden in the copy. Only public repositories are synced.
+
+## Why it's built this way
+
+These are the [learning app's own decisions](../../learning-app/decisions/): Astro + Starlight (ADR-0001), two layers (ADR-0002), the coverage check (ADR-0003), privacy rules (ADR-0004) and "pick first, then reveal" (ADR-0005).

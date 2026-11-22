@@ -1,0 +1,30 @@
+---
+import facts from '../generated/sources.json';
+import { href } from '../lib/site';
+
+interface Props { project: string }
+const f = (facts as any)[Astro.props.project];
+const groups = [
+  ['Status and plans', f.records.overview],
+  ['Decisions (ADRs)', f.records.decisions],
+  ['Development log', f.records.devlog],
+] as const;
+---
+<div class="lx-records not-content">
+  <p class="lx-muted">
+    Imported unchanged from <a href={f.repo}>{f.repo.replace('https://github.com/', '')}</a> at commit <code>{f.commit}</code>.
+  </p>
+  {groups.filter(([, items]) => items.length > 0).map(([label, items]) => (
+    <section>
+      <h3>{label}</h3>
+      <ul>
+        {items.map((r: any) => (
+          <li>
+            <a href={href(r.slug)}>{r.title}</a>
+            {r.status && <span class="lx-muted"> · {r.status}</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  ))}
+</div>

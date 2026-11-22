@@ -1,0 +1,42 @@
+---
+title: "API design and error handling"
+description: "Validation at the edge, honest names, versioning breaking changes, and never leaking internals."
+concept:
+  summary: "Validation at the edge, honest names, versioning breaking changes, and never leaking internals."
+  projects: [road-risk]
+  level: core
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+An **API** is how other programs talk to yours. Good API design means clear input rules, honest names, stable behaviour, and errors that help the caller without exposing your internals.
+
+## How we used it
+
+- **Validation at the edge.** Inputs are Pydantic models, so a latitude of 100 or an unknown language gets a `422` before any code runs.
+- **Never leak internals.** One endpoint used to return the raw exception text, which exposed the database's **full file path** to any caller. Now one app-wide handler logs the details on the server under a short **error id** and returns only `{"detail": "Internal server error", "error_id": "…"}`. The operator can debug; an attacker learns nothing.
+- **A deep health check.** `/health` used to say "ok" while every risk endpoint was broken. Now it actually queries the database and the spatial extension, and returns `503` if either fails.
+- **Honest names and versioning.** `nearest_incidents` actually held the 15 *highest-weighted* incidents, so it was renamed. That's a **breaking change**, so the API version went from 1.0.0 to 2.0.0.
+- **Reproducible answers.** Each response says which reference year it used, so a score can be reproduced after the data changes.
+
+## The trade-off
+
+An error id is less convenient for a developer than a full stack trace, so the details live in the log, where only the operator sees them.
+
+## Check yourself
+
+<details class="check">
+<summary>Why is returning the exception text to the client dangerous?</summary>
+
+It can reveal file paths, SQL, library versions and data values: a map of your system for an attacker.
+
+</details>
+
+<details class="check">
+<summary>Why bump the API to 2.0.0 for a renamed field?</summary>
+
+Clients reading the old name would break. A major version tells them a breaking change happened.
+
+</details>

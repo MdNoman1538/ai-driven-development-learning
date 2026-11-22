@@ -1,0 +1,22 @@
+---
+import { getCollection } from 'astro:content';
+import { href } from '../lib/site';
+const terms = (await getCollection('glossary')).map((e) => e.data).sort((a, b) => a.term.localeCompare(b.term));
+const letters = [...new Set(terms.map((t) => t.term[0].toUpperCase()))];
+---
+<div class="not-content lx-glossary">
+  <nav class="lx-chips" aria-label="Jump to letter">{letters.map((l) => <a class="lx-chip" href={`#letter-${l}`}>{l}</a>)}</nav>
+  {letters.map((l) => (
+    <section id={`letter-${l}`}>
+      <h3>{l}</h3>
+      <dl>
+        {terms.filter((t) => t.term[0].toUpperCase() === l).map((t) => (
+          <div class="lx-term" id={t.id}>
+            <dt>{t.term}</dt>
+            <dd>{t.definition} {t.concept && <a href={href(`concepts/${t.concept}`)}>Learn more →</a>}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  ))}
+</div>

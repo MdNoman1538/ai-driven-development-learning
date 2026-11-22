@@ -1,0 +1,41 @@
+---
+import { getEntry } from 'astro:content';
+import facts from '../generated/sources.json';
+import { href } from '../lib/site';
+
+interface Props { project: string; sections: [string, string, string][] }
+const { project, sections } = Astro.props;
+const p = (await getEntry('projects', project))!.data;
+const f = (facts as any)[project];
+---
+<div class="not-content lx-overview">
+  <p class="lx-lead">{p.tagline}</p>
+  <div class="lx-overview__grid">
+    <section class="lx-box"><h3>The problem</h3><p>{p.problem}</p></section>
+    <section class="lx-box"><h3>The goal</h3><p>{p.goal}</p></section>
+  </div>
+  <section class="lx-box">
+    <h3>What you'll learn from this project</h3>
+    <ul>{p.learn.map((l) => <li>{l}</li>)}</ul>
+  </section>
+  <h3>Explore</h3>
+  <div class="lx-sections">
+    {sections.map(([slug, title, blurb]) => (
+      <a class="lx-section" href={href(`${project}/${slug}`)}><strong>{title}</strong><span>{blurb}</span></a>
+    ))}
+  </div>
+  <h3>Phases</h3>
+  <p class="lx-muted">Status: {p.status}</p>
+  <ol class="lx-phases">
+    {p.phases.map((ph) => (
+      <li class={`lx-phase lx-phase--${ph.state}`}>
+        <span class="lx-phase__state">{ph.state}</span>
+        <strong>{ph.name}</strong>
+        <span>{ph.summary}</span>
+      </li>
+    ))}
+  </ol>
+  <p class="lx-muted">
+    Source: <a href={f.repo}>{f.repo.replace('https://github.com/', '')}</a> · {f.commits} commits · {f.mergedPullRequests} merged PRs · first commit {f.firstCommit}, latest {f.lastCommit}
+  </p>
+</div>

@@ -1,0 +1,46 @@
+---
+title: How to learn here
+description: The method behind this site, in five minutes.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+This site teaches **how to think about building software**: architecture, trade-offs and decisions. You won't need to write code. You'll learn to make, and check, the calls an engineer makes.
+
+## The method: do less, learn more
+
+<Steps>
+
+1. **Understand the problem first.** Every project starts with an **Overview**: the problem, the goal, and what you'll learn from it.
+
+2. **See the shape of the system.** The **Architecture** explorer is a diagram you click. Each box answers *what is it*, *why does it exist* and *where is it*.
+
+3. **Make the decisions yourself.** On **Decisions: you choose**, each card gives a real problem and its options. Commit to a choice *before* you see the answer. Then read why the project chose what it did, and what it led to.
+
+4. **Know every tool and its reason.** The **Tech stack** shows each tool with its purpose, where it's used and the alternatives that weren't chosen.
+
+5. **Follow the story.** The **Journey** shows what happened in each session, which decisions were made and what was learned.
+
+</Steps>
+
+<Aside type="tip" title="Why choose first?">
+Committing to an answer before you see the solution makes the reasoning stick. It's called the *generation effect*. Comparing your pick with the real one shows exactly where your judgement differs, and that's where the learning is. Your picks are saved only in this browser.
+</Aside>
+
+## Two kinds of pages
+
+| | Teaching pages | Original records |
+|---|---|---|
+| **What** | Decision cards, architecture, tools, concepts, journey | ADRs, devlogs, roadmaps and status files |
+| **Written for** | Learning | The project's own documentation |
+| **Source** | This site | Imported unchanged from each project's repository |
+
+When a teaching page summarises something, the original record is one click away, so you can always check the evidence.
+
+## A suggested path
+
+1. [What is AI-driven development?](../ai-driven-development/)
+2. Road Risk: [Overview](../../road-risk/) → [Architecture](../../road-risk/architecture/) → [A crash's journey](../../road-risk/data-journey/) → [Decisions](../../road-risk/decisions/)
+3. projectViewer: [Decisions](../../project-viewer/decisions/)
+4. [The concept library](../../concepts/), whenever a term is new
+5. Later: quizzes on everything you've explored

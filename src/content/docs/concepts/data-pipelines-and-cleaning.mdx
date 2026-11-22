@@ -1,0 +1,60 @@
+---
+title: "Data pipelines and cleaning as code"
+description: "Raw → clean → ready, NULL for missing, composite keys, quarantine, and why you never clean by hand."
+concept:
+  summary: "Raw → clean → ready, NULL for missing, composite keys, quarantine, and why you never clean by hand."
+  projects: [road-risk]
+  level: core
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+A **data pipeline** turns raw files into trustworthy tables in repeatable steps. **Cleaning** fixes inconsistencies: different spellings of the same value, fake values standing for "no value", stray whitespace.
+
+## Why it matters
+
+Every model and every risk number inherits the data's mistakes. If "missing" is spelled three ways, the dashboard counts three categories of missing and under-reports all of them.
+
+## How we used it
+
+**Investigate first.** Before writing any rule, the data was profiled. It had 8 spellings of "missing", `heavy_vehicle` encoded 3 ways across the years, `-1` meaning "no speed limit recorded", and a "duplicate" ID.
+
+**That duplicate was two different crashes**: a fatal one in Joensuu in 2019 and a minor one in Pieksämäki in 2020. The source reuses IDs across years. A naive deduplication would have **deleted a fatal crash**. So the key became `(year, accident_id)`, a **composite key**.
+
+**Rules:**
+- Missing becomes `NULL`: the database's real "no value", never a string like `'Unknown'` that tools treat as a category.
+- Each rule is written **once** in SQL and used for both file formats.
+- An **unseen spelling stops the build** instead of being guessed.
+- Unusable rows are **quarantined** in `ingest_rejects` with a reason (173 crashes without coordinates), never silently dropped.
+- Each raw file's checksum and row counts are logged.
+
+**Cleaning as code, never by hand.** The database is only ever rebuilt from the raw files by the pipeline, so anyone with the same files gets the same result. Two builds gave identical **content fingerprints**.
+
+<Aside type="caution">
+A quick manual fix in the database feels efficient, and is lost on the next rebuild. Worse, nobody can trace a number back to where it came from.
+</Aside>
+
+## Check yourself
+
+<details class="check">
+<summary>Why is NULL better than the string 'Unknown' for missing values?</summary>
+
+SQL, pandas and ML encoders treat 'Unknown' as a real category: it gets counted, grouped and learned from. NULL is understood everywhere as 'no value'.
+
+</details>
+
+<details class="check">
+<summary>Why should an unseen spelling stop the build?</summary>
+
+The source has changed format before. Stopping makes the change visible the day it arrives; guessing would quietly turn new data into NULLs or wrong categories.
+
+</details>
+
+<details class="check">
+<summary>What would deleting the 'duplicate' crash have done?</summary>
+
+Removed a real fatal crash from the risk data, and left participant joins matching the wrong crash.
+
+</details>

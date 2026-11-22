@@ -1,0 +1,54 @@
+---
+title: "Where an LLM belongs, and where it must not"
+description: "Why the safety decision is deterministic, and what small LLMs do well."
+concept:
+  summary: "Why the safety decision is deterministic, and what small LLMs do well."
+  projects: [road-risk, project-viewer]
+  level: core
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+A **large language model (LLM)** generates text. It's excellent at language: explaining, summarising, extracting structure from free text, conversing. It's poor at being a fast, repeatable, calibrated numeric decision-maker.
+
+## Why it matters
+
+In a safety product, the decision must be **fast** (tens of milliseconds), **deterministic** (the same input gives the same output, so it can be tested), **calibrated** ("high risk" means a measurable level) and **certifiable** (ISO 26262 / SOTIF). Generative text fails all four.
+
+## How we used it
+
+Road Risk's ADR-0001: **the LLM never makes the safety decision.**
+
+| Job | LLM? |
+|---|---|
+| Is the road ahead risky right now? | **No**: a statistical/ML model |
+| When to alert, when to stay quiet | **No**: a state machine |
+| Turn Finnish traffic messages into structured hazards | Yes |
+| Explain why an alert fired | Yes (ideally pre-generated offline) |
+| Answer the driver's questions | Yes |
+
+If the LLM fails, alerts still work; a template explanation is the fallback. LLM evaluations check **faithfulness**: an explanation must never contradict the risk engine.
+
+projectViewer follows the same principle: **recording is deterministic** (git, file events, hooks), and an LLM may only *summarise* recorded facts later.
+
+<Aside type="note">
+"Knowing where not to use an LLM" is one of the most valuable skills in AI engineering.
+</Aside>
+
+## Check yourself
+
+<details class="check">
+<summary>Name the four requirements a generative model fails for an in-car risk decision.</summary>
+
+Latency (it's too slow), determinism (output varies), calibration (no measurable meaning for 'high') and certifiability (hard to give a safety argument).
+
+</details>
+
+<details class="check">
+<summary>What does a 'faithfulness' eval check?</summary>
+
+That the LLM's explanation agrees with what the deterministic engine actually decided and why.
+
+</details>

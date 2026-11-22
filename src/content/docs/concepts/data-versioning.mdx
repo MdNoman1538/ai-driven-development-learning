@@ -1,0 +1,48 @@
+---
+title: "Data versioning"
+description: "Release assets, checksums and atomic writes: treating data like a pinned dependency."
+concept:
+  summary: "Release assets, checksums and atomic writes: treating data like a pinned dependency."
+  projects: [road-risk]
+  level: core
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+**Data versioning** gives every version of a dataset a name, and lets anyone verify they have exactly that version, the same way a lock file pins code dependencies.
+
+## Why it matters
+
+A 38 MB database committed to git adds its full size to the repository's history on every rebuild, forever. And nobody can say which data a deployment or a test result used.
+
+## How we used it
+
+- Each database version is a **GitHub Release** (`data-2026-11-20`, then `data-2026-11-22` after cleaning).
+- A small **lock file** records the release URL, size and **SHA-256 checksum**: a fingerprint of the exact bytes.
+- A downloader fetches it, checks the size (a cut-off download says "incomplete") and the checksum, and only then moves it into place. It **never overwrites** a different local database without `--force`.
+- **Atomic writes**: download to a side file, verify, then rename. A crash midway can never leave a half-written database where the app would open it.
+- CI caches the download under the lock file's hash. Render's build downloads it the same way.
+
+The 38 MB already in git history stays there. Removing it would mean rewriting public history (a force-push), which breaks every existing clone.
+
+## The trade-off
+
+Publishing new data takes one extra step: pin, upload the release, commit the lock. At much larger scale, object storage (S3) behind the same lock-file idea is the next step.
+
+## Check yourself
+
+<details class="check">
+<summary>What does a SHA-256 checksum prove?</summary>
+
+That the file is byte-for-byte the one expected. Any change, even one bit, gives a completely different fingerprint.
+
+</details>
+
+<details class="check">
+<summary>Why rename into place instead of writing the final file directly?</summary>
+
+A rename is atomic: readers see the old file or the complete new one, never a half-written file.
+
+</details>

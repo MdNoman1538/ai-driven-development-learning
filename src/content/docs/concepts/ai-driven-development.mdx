@@ -1,0 +1,43 @@
+---
+title: "Working with an AI coding agent"
+description: "Rules in CLAUDE.md, a Definition of Done, and hooks: how an agent is kept on a professional workflow."
+concept:
+  summary: "Rules in CLAUDE.md, a Definition of Done, and hooks: how an agent is kept on a professional workflow."
+  projects: [road-risk, project-viewer, learning-app]
+  level: foundation
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+The agent (here Claude Code) follows rules written in a file in the repository, **`CLAUDE.md`**: the workflow, the non-negotiable design rules, the commands, and the **Definition of Done**, the checklist a change must meet before it counts as finished.
+
+## Why it matters
+
+An agent without rules optimises for "it runs". The rules make it work like a careful professional: branch, test first, small PRs, docs updated, ask before anything outward-facing.
+
+## How we used it
+
+- **Design rules the agent can't break silently**: "the LLM never makes the safety decision", "only use features the car can know live", "risk means crashes relative to exposure".
+- **Definition of Done**: tests cover the change; CI is green; devlog, ADR and status are updated; performance claims come from a measurement; no secrets; a human has read the whole diff.
+- **Hooks**: projectViewer installs one global hook so every AI edit and prompt appears live in the viewer. It's guarded to **always exit successfully**, so it can never block the agent, even if the viewer is down.
+- **Asking first**: pushing, merging and changing GitHub settings need the owner's go-ahead.
+
+See the full workflow in [What is AI-driven development?](../../start/ai-driven-development/).
+
+## Check yourself
+
+<details class="check">
+<summary>Why put the agent's rules in the repository instead of in the agent's memory?</summary>
+
+They're versioned, reviewable, and the same for every tool and contributor. A rule in one person's local settings is invisible to everyone else.
+
+</details>
+
+<details class="check">
+<summary>Why must the projectViewer hook always exit successfully?</summary>
+
+A hook that fails, or exits with the blocking code, can stop the agent's work. A monitoring tool must never be able to break the thing it monitors.
+
+</details>

@@ -1,0 +1,49 @@
+---
+title: "Reproducible environments"
+description: "Lock files, exact versions and the two-week rule: why every install must be identical."
+concept:
+  summary: "Lock files, exact versions and the two-week rule: why every install must be identical."
+  projects: [road-risk, project-viewer, learning-app]
+  level: foundation
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+A program depends on dozens of packages, each with many versions. A **reproducible environment** means every install (yours, CI's, the server's) gets the **exact same versions**. A **lock file** (`uv.lock`, `package-lock.json`) records them.
+
+## Why it matters
+
+Without a lock, "install the dependencies" can mean different code on different days. A bug appears on the server but not on your laptop, and nobody can say why.
+
+## How we used it
+
+- **uv** manages Python: `pyproject.toml` says what's needed, `uv.lock` pins exactly what's installed, and `uv sync` installs exactly that. Render's `requirements.txt` is *generated* from the lock, and CI fails if it's out of date.
+- **Exact pins** in JavaScript: `"react": "19.3.1"`, not `"^19.0.0"`.
+- **The two-week rule**: every version was published at least two weeks before it was chosen. Brand-new releases are where breaking bugs and supply-chain attacks most often appear.
+- **Data is pinned too**: the database's lock file names its exact SHA-256 ([Data versioning](../data-versioning/)).
+
+<Aside type="tip">
+An analogy: a recipe that names the exact brand and batch of every ingredient, not just "flour".
+</Aside>
+
+## The trade-off
+
+Pinned versions don't update themselves, so upgrades are deliberate work. That's intended: an upgrade becomes a reviewed change with CI behind it, not a surprise.
+
+## Check yourself
+
+<details class="check">
+<summary>What's the difference between pyproject.toml and uv.lock?</summary>
+
+pyproject.toml states what the project needs (often as ranges); uv.lock records the exact versions that were resolved and installed. Installs read the lock.
+
+</details>
+
+<details class="check">
+<summary>Why wait two weeks before adopting a new package version?</summary>
+
+Most broken or malicious releases are found and pulled within days. Waiting lets others find those problems first.
+
+</details>

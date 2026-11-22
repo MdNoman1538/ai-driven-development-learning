@@ -1,0 +1,19 @@
+---
+import { getCollection } from 'astro:content';
+import DecisionExplorer from './DecisionExplorer';
+import facts from '../generated/sources.json';
+import { href } from '../lib/site';
+
+interface Props { project: string }
+const { project } = Astro.props;
+const records = (facts as any)[project]?.records?.decisions ?? [];
+const decisions = (await getCollection('decisions'))
+  .map((e) => e.data)
+  .filter((d) => d.project === project)
+  .sort((a, b) => a.ref.localeCompare(b.ref))
+  .map((d) => {
+    const rec = records.find((r: any) => `ADR-${String(r.number).padStart(4, '0')}` === d.ref);
+    return { ...d, record: rec ? href(rec.slug) : undefined };
+  });
+---
+<DecisionExplorer client:visible decisions={decisions} />

@@ -1,0 +1,48 @@
+---
+title: "Coordinates and spatial indexes"
+description: "GPS degrees vs metres, and how an R-tree answers 'what's near here?' without checking everything."
+concept:
+  summary: "GPS degrees vs metres, and how an R-tree answers 'what's near here?' without checking everything."
+  projects: [road-risk]
+  level: core
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+A **coordinate system** says what a pair of numbers means as a position.
+- **WGS84** is what GPS uses: latitude and longitude in *degrees*.
+- **EPSG:3067** (ETRS-TM35FIN) is Finland's *metric* system: positions in metres, so a distance is simple arithmetic.
+
+A **spatial index** (here an **R-tree**) groups nearby points into boxes, then boxes into bigger boxes. To find what's within 250 m, it checks a handful of boxes instead of all 180,734 crashes.
+
+## Why it matters
+
+A degree of longitude is about 111 km at the equator and only about 50 km in Lapland, so measuring distance in degrees is wrong. And scanning every row for every question doesn't scale to a car asking many times a second.
+
+## How we used it
+
+- Every crash is stored with both: `geom_3067` for distance maths, plus `lat`/`lon` for maps.
+- A query converts the GPS point to EPSG:3067 and asks DuckDB for crashes within the radius; `EXPLAIN` confirms the R-tree is used.
+- Coming in Phase 1: **map-matching**, which works out which road segment, and direction, each crash and each GPS point belongs to. Risk belongs to a stretch of road, not to a circle on a map.
+
+## The trade-off
+
+Two coordinate columns take a little more space. The alternative, converting on every query or measuring in degrees, is slower or wrong.
+
+## Check yourself
+
+<details class="check">
+<summary>Why store coordinates in EPSG:3067 as well as latitude/longitude?</summary>
+
+Distances in a metric system are plain arithmetic in metres; in degrees they'd be wrong and change with latitude.
+
+</details>
+
+<details class="check">
+<summary>What does an R-tree save?</summary>
+
+Checking every point. It narrows the search to a few nearby boxes, so 'what's within 250 m?' touches a tiny fraction of the data.
+
+</details>

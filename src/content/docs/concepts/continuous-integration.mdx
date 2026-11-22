@@ -1,0 +1,46 @@
+---
+title: "Continuous integration (CI)"
+description: "Running the checks on a clean machine for every change, so 'it works on my machine' is never the proof."
+concept:
+  summary: "Running the checks on a clean machine for every change, so 'it works on my machine' is never the proof."
+  projects: [road-risk, project-viewer, learning-app]
+  level: foundation
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+**CI** runs a project's checks (lint, format, tests, builds) automatically on a fresh machine for every push and pull request. Here that's GitHub Actions. **Required checks** in branch protection mean a PR can't merge until they pass.
+
+## Why it matters
+
+Your machine has history: installed packages, cached files, environment variables. A fresh machine has none, so it finds problems yours hides. That's exactly how Road Risk's worst bug showed up: the database's spatial extension was *loaded* but never *installed*, which only fails on a clean server. The deployed API had been broken without anyone noticing.
+
+## How we used it
+
+- **Road Risk**: *Lint & dependency checks* (ruff, the lock file matches `pyproject.toml`, the generated `requirements.txt` matches the lock) and *Tests*, which downloads the pinned database release, verifies its checksum and runs 117 tests.
+- **Caching**: the database download is cached under a key made from the lock file's hash, so a new data version invalidates the cache automatically.
+- **Least privilege**: workflows only get `contents: read`.
+- **projectViewer**: lint, tests, and a separate job that builds and tests the viewer.
+- **This site**: type-check, coverage check and build on every PR; deploy on every merge.
+
+## The trade-off
+
+CI takes a minute or two per push and has to be maintained. In exchange, "green" means the same thing for everyone, including the AI agent.
+
+## Check yourself
+
+<details class="check">
+<summary>Why did the spatial-extension bug never show up locally?</summary>
+
+DuckDB extensions are installed per DuckDB version in your home folder. Locally the extension had been installed once, long ago; a fresh server never had it, so `LOAD` failed there.
+
+</details>
+
+<details class="check">
+<summary>Why is the CI cache keyed by the lock file's hash?</summary>
+
+When the data version changes, the lock file changes, so the key changes and the old cached database can't be used by mistake.
+
+</details>

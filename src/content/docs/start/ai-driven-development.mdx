@@ -1,0 +1,67 @@
+---
+title: What is AI-driven development?
+description: How the three projects were built, with an AI agent writing the code and a human owning the decisions.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+**AI-driven development** means an AI coding agent does most of the implementation (reading code, writing it, running tests), while a human sets the direction, makes the decisions and verifies the result. All three projects on this site were built this way, with Claude Code as the agent.
+
+The hard part isn't getting an AI to write code. It's making sure the code is **right**, that **you understand it**, and that the project **stays maintainable** as code arrives faster than anyone can read it.
+
+## The core problem
+
+An agent can produce a hundred lines a minute. A person can verify maybe a few hundred lines an hour. Left alone, that gap fills up with code nobody has checked. So the workflow is designed around one idea:
+
+<Aside type="caution" title="Verification sets the pace">
+Not generation. Every practice below exists to make checking cheap, automatic or impossible to skip.
+</Aside>
+
+## The loop used in every change
+
+<Steps>
+
+1. **Plan before code.** State the problem, the options and the choice. For anything significant, the choice becomes an **ADR** (Architecture Decision Record), so the reasoning survives.
+
+2. **Tests are the contract.** For a bug, first write a test that *fails* because of the bug and see it fail; then fix it. A test written after the fix might pass for the wrong reason. Tests define "correct" in a form a machine checks on every change.
+
+3. **Small, single-purpose branches and pull requests.** One change = one branch = one PR. Small diffs can actually be read.
+
+4. **CI on a clean machine.** GitHub Actions runs lint and tests for every PR. Branch protection makes merging impossible until they pass. "Works on my machine" isn't proof.
+
+5. **Two reviews.** An AI reviewer (`/code-review`) gives a second opinion and often finds real bugs. **A human still reads every diff.** AI review never replaces that.
+
+6. **Write down what happened.** A devlog entry per session (the reasoning, the surprises, the dead ends) and a status file that says what exists now. Every commit carries `Changes:` notes naming each changed function and why.
+
+</Steps>
+
+## The rules live in the repository
+
+The agent follows a file called `CLAUDE.md` in each repo: the workflow, the design rules (for example *"the LLM never makes the safety decision"*), the commands, and what "done" means. Because it's versioned with the code, the rules are visible, reviewable and the same for every tool and person.
+
+## What the human does
+
+| The agent | The human |
+|---|---|
+| Reads the code, proposes options | **Decides** between them |
+| Writes code and tests | **Reads every diff** |
+| Runs checks, measures performance | Asks *"how do you know?"* |
+| Drafts ADRs and devlogs | Owns the direction and the trade-offs |
+| Fixes what review finds | Says no when something is wrong |
+
+## What went wrong, and how the workflow caught it
+
+Real examples from these projects:
+
+- **A wrong performance diagnosis.** The status file said a slowdown was "in Python". A profile showed it was the SQL query. *Lesson: measure, don't guess.*
+- **A documented command that didn't work.** The agent tested its own variant of the rebuild command, not the one it had documented. AI review caught it.
+- **A "duplicate" that wasn't.** Deleting it would have removed a fatal crash. Investigating before cleaning caught it.
+- **A future leaking into the past.** "Risk as of 2018" still counted 2019–2025 crashes, at full weight. AI review caught it; a test now guards it.
+
+None of these were caught by writing code faster. All of them were caught by **checks**.
+
+## Where to see this in practice
+
+- The [Journey](../../journey/) shows each session, step by step.
+- Each project's **Decisions** page lets you make its calls yourself.
+- Concepts: [Git and GitHub Flow](../../concepts/git-and-github-flow/), [Testing strategy](../../concepts/testing-strategy/), [AI code review](../../concepts/ai-code-review/), [ADRs](../../concepts/architecture-decision-records/).

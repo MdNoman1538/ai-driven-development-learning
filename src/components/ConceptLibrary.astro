@@ -1,0 +1,23 @@
+---
+import { getCollection } from 'astro:content';
+import { href, PROJECT_NAMES } from '../lib/site';
+
+const levels = [['foundation', 'Foundations'], ['core', 'Core ideas'], ['advanced', 'Going deeper']] as const;
+const concepts = (await getCollection('docs', (e) => !!e.data.concept)).sort((a, b) => a.data.title.localeCompare(b.data.title));
+---
+<div class="not-content">
+  {levels.map(([level, label]) => (
+    <section>
+      <h3>{label}</h3>
+      <div class="lx-grid">
+        {concepts.filter((c) => c.data.concept!.level === level).map((c) => (
+          <a class="lx-concept" href={href(c.id)}>
+            <strong>{c.data.title}</strong>
+            <span>{c.data.concept!.summary}</span>
+            <span class="lx-concept__projects">{c.data.concept!.projects.map((p) => <span class={`lx-pill lx-pill--${p}`}>{PROJECT_NAMES[p]}</span>)}</span>
+          </a>
+        ))}
+      </div>
+    </section>
+  ))}
+</div>
