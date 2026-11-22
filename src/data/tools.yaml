@@ -1,0 +1,424 @@
+# One card per tool. `packages` lists the dependency names this card explains; the coverage
+# check (scripts/check-coverage.mjs) fails the build if a project uses a package no card covers.
+
+# ---------- languages ----------
+- id: python
+  name: Python 3.12
+  layer: language
+  what: The main programming language of Road Risk and of projectViewer's analyser and server.
+  why: >-
+    It has the strongest data and AI ecosystem: DuckDB, pandas, scikit-learn, FastAPI and every LLM toolkit
+    support it first. For projectViewer it also has a built-in parser for Python code (`ast`), so analysing
+    Python projects needs no extra dependency.
+  analogy: A language with a huge shared toolbox. You rarely build a tool yourself because someone already made a good one.
+  alternatives:
+    - { name: "R", why_not: "Strong statistics, but weaker for building services, APIs and deployable apps." }
+    - { name: "Go / Rust", why_not: "Faster at runtime, but far less data/ML tooling. Speed problems here were solved by architecture instead (ADR-0003)." }
+  used_in:
+    - { project: road-risk, where: "src/ (all modules)", how: "Ingestion, scoring engine, API, dashboard, tests" }
+    - { project: project-viewer, where: "src/projectviewer/", how: "Code analyser (stdlib `ast`), change sets, local server, CLI, Claude Code hook" }
+
+- id: typescript
+  name: TypeScript
+  layer: language
+  what: JavaScript with types, the language of this learning site's interactive components and content schemas.
+  why: >-
+    Types catch mistakes before the page is built: a decision card missing its options, or a component
+    receiving the wrong data. The content schemas are written in TypeScript (zod), so content is
+    checked like code.
+  alternatives:
+    - { name: "Plain JavaScript", why_not: "Works, but mistakes surface only when someone opens the broken page." }
+  packages: [typescript, "@types/react", "@types/react-dom", "@astrojs/check"]
+  used_in:
+    - { project: learning-app, where: "src/components/*.tsx, src/content.config.ts", how: "Interactive explorers and the content model; `astro check` type-checks everything in CI" }
+
+- id: sql
+  name: SQL
+  layer: language
+  what: "The language for asking questions of tables of data: filter, join, group and count."
+  why: >-
+    Data work is mostly set operations ("all crashes within 250 m, grouped by surface"). SQL says *what*
+    you want and lets the database work out *how*, usually far faster than a Python loop. The cleaning
+    rules are written in SQL too, once, and used for every file format.
+  alternatives:
+    - { name: "pandas only", why_not: "Fine for small, in-memory work; slower and more memory-hungry for joins and spatial queries over 180k crashes." }
+  used_in:
+    - { project: road-risk, where: "src/ingestion/clean.py, src/scoring/risk_engine.py", how: "Cleaning rules as SQL expressions; radius queries with a spatial index" }
+
+# ---------- data ----------
+- id: duckdb
+  name: DuckDB (+ spatial extension)
+  layer: data
+  what: A database that runs inside your program (no server), built for fast analytics. Its spatial extension adds geometry types, distance functions and R-tree indexes.
+  why: >-
+    It's the project's "data factory" (ADR-0003): it reads CSV directly, joins and aggregates fast
+    (columnar, vectorised), and needs nothing installed beyond a Python package. The spatial extension
+    answers "which crashes are within 250 m of this point?" using an index instead of checking all 180,734.
+  analogy: A spreadsheet engine with a built-in map, running inside your app instead of on a separate server.
+  alternatives:
+    - { name: "PostgreSQL + PostGIS", why_not: "The industry standard for spatial data, but a server to run and maintain. Unnecessary for one-machine analytics." }
+    - { name: "SQLite + SpatiaLite", why_not: "Built for small transactions, not analytics; much slower for large scans and aggregations." }
+    - { name: "pandas / GeoPandas only", why_not: "Everything in memory and in Python loops; slower, and no persistent indexed store." }
+  packages: [duckdb]
+  used_in:
+    - { project: road-risk, where: "src/core/db.py, src/ingestion/, src/scoring/", how: "The warehouse (180,734 crashes, 309,544 participants), cleaning at ingestion, spatial radius queries" }
+
+- id: pandas
+  name: pandas
+  layer: data
+  what: Python's standard library for tables of data (DataFrames).
+  why: >-
+    Used for one narrow job: reading the participant CSVs, including the 2025 file in UTF-16 encoding,
+    which pandas handles reliably. After reading, everything is handed to DuckDB and cleaned with the
+    same SQL rules as the crash files, so there's no second copy of the cleaning logic.
+  alternatives:
+    - { name: "DuckDB read_csv only", why_not: "Used for the crash files; the UTF-16 participant file is simpler to read through pandas." }
+    - { name: "Polars", why_not: "Faster, modern DataFrames; unnecessary for a read-only step." }
+  packages: [pandas]
+  used_in:
+    - { project: road-risk, where: "src/ingestion/ingest_all.py, src/ui/app.py", how: "Reading participant CSVs as raw text; tables in the dashboard" }
+
+- id: scikit-learn
+  name: scikit-learn + joblib
+  layer: ai
+  what: Python's classic machine-learning library (scikit-learn), and a tool for saving trained models to files (joblib).
+  why: >-
+    Declared for the modelling phases (Phase 2 baselines and Phase 4's calibrated model, with calibration
+    tools such as isotonic regression). They are not used by the app code yet, which is fine: being
+    explicit about "installed but not used yet" is part of an honest stack.
+  alternatives:
+    - { name: "LightGBM / XGBoost", why_not: "The likely Phase 4 model family (gradient-boosted trees); will be added when that phase starts." }
+    - { name: "PyTorch", why_not: "For deep learning; tabular risk data is better served by trees and statistics." }
+  packages: [scikit-learn, joblib]
+  used_in:
+    - { project: road-risk, where: "pyproject.toml (not yet imported by src/)", how: "Planned for Phases 2 and 4" }
+
+# ---------- backend ----------
+- id: fastapi
+  name: FastAPI + Uvicorn
+  layer: backend
+  what: FastAPI is a Python web framework for building APIs; Uvicorn is the server program that runs it.
+  why: >-
+    Request and response shapes are declared as Pydantic models, so FastAPI validates input
+    automatically (a latitude of 100 gets a 422 error before any code runs) and generates API
+    documentation for free. One app-wide error handler logs details server-side and gives clients
+    only an error id.
+  analogy: A receptionist who checks every form is filled in correctly before passing it on.
+  alternatives:
+    - { name: "Flask", why_not: "Older and simpler; validation and docs need extra libraries." }
+    - { name: "Django", why_not: "A full web framework (admin, ORM, templates); far more than an API needs." }
+  packages: [fastapi, uvicorn]
+  used_in:
+    - { project: road-risk, where: "src/api/main.py", how: "/health (a deep check of DB + spatial), point risk, route risk; API version 2.0.0" }
+
+- id: pydantic
+  name: Pydantic
+  layer: backend
+  what: A library that defines the shape of data as Python classes and checks real data against it.
+  why: >-
+    The risk engine's inputs and outputs (RiskQuery, RiskProfile) are Pydantic models, so invalid values
+    are rejected at the edge, and the same models describe the API to clients.
+  alternatives:
+    - { name: "dataclasses", why_not: "Built in, but no validation: bad input travels deep into the code before failing." }
+  packages: [pydantic]
+  used_in:
+    - { project: road-risk, where: "src/scoring/risk_engine.py", how: "RiskQuery (validated input), RiskProfile, AccidentSummary" }
+
+- id: stdlib-http
+  name: Python standard-library HTTP server
+  layer: backend
+  what: The web server built into Python (`http.server`), with no framework.
+  why: >-
+    projectViewer's server only serves the viewer files, a JSON API and live events on 127.0.0.1. Using
+    the standard library means projectViewer has zero runtime dependencies, so it installs anywhere
+    and can't break because of someone else's library update.
+  alternatives:
+    - { name: "FastAPI", why_not: "Nicer to write, but adds dependencies to a tool meant to sit next to any project." }
+  used_in:
+    - { project: project-viewer, where: "src/projectviewer/server.py", how: "ThreadingHTTPServer: world, source, commits, changes, diff and events endpoints; gzip + ETag" }
+
+# ---------- frontend ----------
+- id: streamlit
+  name: Streamlit + Folium
+  layer: frontend
+  what: Streamlit turns a Python script into an interactive web dashboard; Folium draws Leaflet maps; streamlit-folium puts those maps inside Streamlit.
+  why: >-
+    For a data project's exploration and demos, writing a dashboard in pure Python is far faster than
+    building a web front end. It's explicitly a dev and demo tool, not the in-car interface.
+  alternatives:
+    - { name: "React + a map library", why_not: "A polished product UI, but weeks of front-end work for an internal tool." }
+    - { name: "Jupyter notebooks", why_not: "Great for analysis; not a shareable, deployable app." }
+  packages: [streamlit, folium, streamlit-folium]
+  used_in:
+    - { project: road-risk, where: "src/ui/app.py", how: "Region/municipality picker, hotspot list, risk metrics, incident map, Finnish/English" }
+
+- id: react
+  name: React
+  layer: frontend
+  what: A JavaScript library for building interfaces from components that update when their data changes.
+  why: >-
+    In projectViewer it hosts the deck.gl map and the panels. On this site it powers only the interactive
+    "islands" (architecture explorer, decision cards, stack map); everything else is plain HTML.
+  alternatives:
+    - { name: "Svelte / Vue", why_not: "Equally capable; React has the largest ecosystem, and deck.gl has official React bindings." }
+  packages: [react, react-dom, "@astrojs/react"]
+  used_in:
+    - { project: project-viewer, where: "viewer/src/ (React 18.3.1)", how: "App shell, panels, change drawer, tour, activity feed" }
+    - { project: learning-app, where: "src/components/*.tsx (React 19.3.1)", how: "Interactive islands inside otherwise static pages" }
+
+- id: deckgl
+  name: deck.gl + d3-hierarchy
+  layer: frontend
+  what: deck.gl draws large numbers of shapes on the GPU (2D or 3D); d3-hierarchy computes treemap layouts.
+  why: >-
+    The code map is a 2.5D "city": blocks sized by number of functions, with arcs between them. deck.gl
+    renders thousands of blocks smoothly with an orbit camera. A squarified treemap packs the blocks of
+    one level into rectangles.
+  alternatives:
+    - { name: "three.js", why_not: "Lower level: you'd build picking, cameras and layers yourself." }
+    - { name: "Graph layouts (ELK, force-directed)", why_not: "Show links well, but hide size and hierarchy, and jump around as code changes (ADR-0005)." }
+  packages: ["@deck.gl/core", "@deck.gl/layers", "@deck.gl/react", d3-hierarchy]
+  used_in:
+    - { project: project-viewer, where: "viewer/src/MapView.jsx, layout.js", how: "Blocks, roofs, arcs, the orthographic orbit camera (pitch 35°)" }
+
+- id: vite
+  name: Vite
+  layer: frontend
+  what: A build tool that serves a JavaScript app instantly during development and bundles it for production.
+  why: >-
+    The viewer is a single-page app. Vite gives fast reloads while developing, and a small static bundle
+    that projectViewer's Python server can serve.
+  alternatives:
+    - { name: "webpack", why_not: "The older standard; slower and more configuration." }
+  packages: [vite, "@vitejs/plugin-react"]
+  used_in:
+    - { project: project-viewer, where: "viewer/ (Vite 5.4.21)", how: "Dev server and production build of the viewer" }
+
+- id: astro
+  name: Astro + Starlight
+  layer: frontend
+  what: Astro builds websites into static HTML; Starlight is Astro's documentation theme (navigation, search, dark mode, mobile layout).
+  why: >-
+    A learning site is content, so it should be plain, fast HTML. Interactivity is added only where it
+    teaches ("islands"). Starlight gives a polished, accessible design out of the box, and typed content
+    collections check every entry against a schema at build time (ADR-0001, ADR-0002).
+  analogy: A printing press that also lets you glue a few working gadgets onto the printed pages.
+  alternatives:
+    - { name: "MkDocs", why_not: "Simplest, but hard to make interactive and good-looking." }
+    - { name: "Docusaurus", why_not: "Mature, but every page ships React; plainer design." }
+    - { name: "Next.js", why_not: "A full web-app framework that needs a server or paid hosting; more than content needs." }
+  packages: [astro, "@astrojs/starlight"]
+  used_in:
+    - { project: learning-app, where: "astro.config.mjs, src/content/, src/content.config.ts", how: "The whole site: pages, sidebar, search (Pagefind), schemas" }
+
+- id: sharp
+  name: sharp
+  layer: frontend
+  what: A fast image-processing library that Astro uses to resize and optimise images at build time.
+  why: Pages load faster when images are resized for the screen. Astro expects sharp for its image service.
+  alternatives:
+    - { name: "No image optimisation", why_not: "Works, but ships larger images than needed." }
+  packages: [sharp]
+  used_in:
+    - { project: learning-app, where: "build step", how: "Image optimisation during `astro build`" }
+
+# ---------- testing ----------
+- id: pytest
+  name: pytest (+ httpx, FastAPI TestClient)
+  layer: testing
+  what: Python's most popular test framework. httpx lets FastAPI's TestClient call the API in-process.
+  why: >-
+    Tests are the contract with an AI agent: they define "correct" in a form a machine checks on every
+    change. Road Risk has 117 tests: unit tests (rules, tiers), integration tests (real database),
+    characterization tests that pin today's scores, and synthetic-data tests for the cleaning pipeline.
+  alternatives:
+    - { name: "unittest", why_not: "Built in, but more boilerplate; pytest fixtures and parametrize make tests shorter and clearer." }
+  packages: [pytest, httpx]
+  used_in:
+    - { project: road-risk, where: "tests/", how: "117 tests; `integration` marker for tests that need the real database" }
+    - { project: project-viewer, where: "tests/", how: "Analyser, server and change-set tests on small made-up fixture projects" }
+
+- id: node-test
+  name: node --test
+  layer: testing
+  what: The test runner built into Node.js.
+  why: The viewer's layout and tree logic are pure functions, testable without a browser or any test library.
+  alternatives:
+    - { name: "Vitest / Jest", why_not: "More features, but one more dependency for a handful of pure-function tests." }
+  used_in:
+    - { project: project-viewer, where: "viewer/src/*.test.js", how: "Tree building, layout and change-mark logic" }
+
+# ---------- quality ----------
+- id: ruff
+  name: ruff
+  layer: quality
+  what: A very fast Python linter (finds likely bugs and bad patterns) and formatter (one consistent style).
+  why: >-
+    It ends style debates and catches mistakes such as unused imports or a bare `except` before review.
+    It runs in milliseconds, so it can run on every commit and in CI.
+  alternatives:
+    - { name: "flake8 + black + isort", why_not: "The older trio does the same, slower, as three tools." }
+  packages: [ruff]
+  used_in:
+    - { project: road-risk, where: "pyproject.toml [tool.ruff], pre-commit, CI", how: "Lint + format check on every commit and PR" }
+    - { project: project-viewer, where: "pyproject.toml, pre-commit, CI", how: "Same" }
+
+- id: pre-commit
+  name: pre-commit
+  layer: quality
+  what: Runs checks automatically every time you make a git commit, and refuses the commit if one fails.
+  why: >-
+    Problems are cheapest to fix before they're committed. The hooks also enforce workflow rules: they
+    refuse commits directly on `main`, large files, private keys, merge-conflict markers, and a stale
+    requirements.txt.
+  alternatives:
+    - { name: "CI only", why_not: "Catches the same things, but minutes later and after a push." }
+  packages: [pre-commit]
+  used_in:
+    - { project: road-risk, where: ".pre-commit-config.yaml", how: "no-commit-to-main, ruff, uv-lock, uv-export, file hygiene" }
+    - { project: project-viewer, where: ".pre-commit-config.yaml", how: "Same pattern" }
+
+# ---------- workflow ----------
+- id: git-github
+  name: git + GitHub Flow
+  layer: workflow
+  what: git records every change as a commit; GitHub hosts the repositories and pull requests. GitHub Flow means `main` always works and every change arrives through a short-lived branch and a PR.
+  why: >-
+    With AI writing code quickly, the PR is the checkpoint where a human reads the diff and CI proves it
+    works. Merge commits (not squash) keep each commit's `Changes:` notes (ADR-0007), and branch
+    protection makes the rules impossible to skip.
+  alternatives:
+    - { name: "Git Flow", why_not: "develop/release branches for scheduled releases; too heavy for one maintainer." }
+    - { name: "Trunk-based", why_not: "Commits straight to main; needs a very strong test suite first." }
+  used_in:
+    - { project: road-risk, where: "every change since 2026-11-21", how: "8 merged PRs; main protected (required checks, up to date)" }
+    - { project: project-viewer, where: "every change", how: "5 merged PRs; the Changes: notes are what the viewer shows on the code" }
+    - { project: learning-app, where: "every change after the scaffold", how: "Same workflow" }
+
+- id: github-actions
+  name: GitHub Actions (CI)
+  layer: workflow
+  what: Runs your checks (lint, tests, build) on GitHub's machines for every push and pull request.
+  why: >-
+    "It works on my machine" isn't proof. CI runs on a clean machine every time, and branch protection
+    blocks merging until it's green. It caught real problems: the spatial-extension bug only appears on
+    a fresh machine.
+  alternatives:
+    - { name: "Local checks only", why_not: "Depend on each person's machine and discipline." }
+  used_in:
+    - { project: road-risk, where: ".github/workflows/ci.yml", how: "Lint & dependency checks; Tests (fetches the pinned database, cached by lock hash)" }
+    - { project: project-viewer, where: ".github/workflows/ci.yml", how: "Lint & lockfile; Tests; Viewer build + tests" }
+    - { project: learning-app, where: ".github/workflows/", how: "Type check, coverage check, build; deploy to GitHub Pages" }
+
+- id: uv
+  name: uv
+  layer: workflow
+  what: A fast Python project manager. It creates the virtual environment, resolves dependencies and pins exact versions in `uv.lock`.
+  why: >-
+    Reproducibility: everyone, CI included, installs the *exact* same versions from the lock file. One
+    tool replaces pip, venv and pip-tools, and is much faster. `requirements.txt` for Render is
+    generated from the lock, never edited by hand.
+  analogy: A recipe that names the exact brand and batch of every ingredient, not just "flour".
+  alternatives:
+    - { name: "pip + venv", why_not: "No real lock file; installs can drift over time." }
+    - { name: "Poetry / conda", why_not: "Slower; conda mixes a second package world in." }
+  used_in:
+    - { project: road-risk, where: "pyproject.toml, uv.lock", how: "`uv sync` installs; CI checks the lock matches pyproject and requirements.txt" }
+    - { project: project-viewer, where: "pyproject.toml, uv.lock", how: "Same" }
+
+- id: npm
+  name: npm + exact version pins
+  layer: workflow
+  what: Node's package manager. `package-lock.json` records the exact version of every package.
+  why: >-
+    Every version here is pinned exactly and was chosen at least two weeks after its release: brand-new
+    releases are where breaking bugs and supply-chain attacks are most likely.
+  alternatives:
+    - { name: "Version ranges (^1.2.3)", why_not: "Convenient, but a fresh install can silently pull a new, broken release." }
+  used_in:
+    - { project: project-viewer, where: "viewer/package.json", how: "Exact pins (React 18.3.1, deck.gl 9.4.1, Vite 5.4.21)" }
+    - { project: learning-app, where: "package.json", how: "Exact pins (Astro 7.4.7, Starlight 0.42.10, React 19.3.1)" }
+
+- id: sync-script
+  name: Sync script (smol-toml + yaml)
+  layer: workflow
+  what: This site's importer. It reads each project's public repo and imports its records (ADRs, devlogs, status) and facts (dependencies, CI jobs, history).
+  why: >-
+    Retyped documentation drifts away from the truth. Importing the records unchanged, and reading the
+    facts from the projects' own files, means this site can't disagree with them (ADR-0002).
+    smol-toml reads pyproject.toml; yaml reads workflows and writes frontmatter.
+  alternatives:
+    - { name: "Copy-paste by hand", why_not: "Goes stale the first time someone forgets." }
+  packages: [smol-toml, yaml]
+  used_in:
+    - { project: learning-app, where: "scripts/sync-sources.mjs, sources.config.json", how: "`npm run sync`; output in src/generated/ and the Records pages" }
+
+# ---------- delivery ----------
+- id: render
+  name: Render
+  layer: delivery
+  what: A cloud platform that runs web services straight from a GitHub repository.
+  why: >-
+    Free hosting for the demo API and dashboard, configured as code in `render.yaml`. Its build fetches
+    the pinned database release, since the database is no longer in git.
+  alternatives:
+    - { name: "Fly.io / Railway", why_not: "Similar; Render's free tier and blueprint file were enough." }
+    - { name: "A VPS", why_not: "Full control, but you maintain the server yourself." }
+  used_in:
+    - { project: road-risk, where: "render.yaml", how: "Two services (API, dashboard); /health is a deep check" }
+
+- id: github-releases
+  name: GitHub Releases (data versions)
+  layer: delivery
+  what: "Versioned downloads attached to a git tag. Here: each version of the crash database."
+  why: >-
+    A 38 MB binary in git adds its full size to the history on every rebuild, forever. As a release
+    asset, pinned by a lock file with a SHA-256 checksum, every data version has a name and can be
+    verified (ADR-0007).
+  alternatives:
+    - { name: "Git LFS", why_not: "Small free quota, extra tooling on every machine and builder." }
+    - { name: "S3 / object storage", why_not: "The choice at scale; needs an account and credentials. Too much for one file today." }
+  used_in:
+    - { project: road-risk, where: "data/road_risk.lock.json, src/core/dataset.py", how: "Releases data-2026-11-20 and data-2026-11-22 (cleaned)" }
+
+- id: github-pages
+  name: GitHub Pages
+  layer: delivery
+  what: Free hosting for static websites, straight from a GitHub repository.
+  why: >-
+    This site is static HTML, so it needs no server: Pages serves it free, fast and with HTTPS.
+    A GitHub Actions workflow builds and deploys it on every merge to main.
+  alternatives:
+    - { name: "Netlify / Vercel", why_not: "Also good, but another account; Pages is next to the code." }
+  used_in:
+    - { project: learning-app, where: ".github/workflows/deploy.yml", how: "Build → upload → deploy on every push to main" }
+
+# ---------- ai ----------
+- id: claude-code
+  name: Claude Code (AI coding agent)
+  layer: ai
+  what: An AI agent that reads, writes and runs code in the terminal and editor, working under the project's rules in CLAUDE.md.
+  why: >-
+    It does the implementation; the human owns the decisions. CLAUDE.md turns the workflow into rules
+    the agent follows (branches, test-first fixes, Changes: notes, docs every session), and hooks
+    let projectViewer watch it work live.
+  alternatives:
+    - { name: "Autocomplete assistants", why_not: "Help line by line, but don't plan, run tests or follow a workflow." }
+  used_in:
+    - { project: road-risk, where: "CLAUDE.md", how: "All PRs written by the agent, reviewed by the owner and by /code-review" }
+    - { project: project-viewer, where: "CLAUDE.md, src/projectviewer/hook.py", how: "Built by the agent; its hook records the agent's edits and prompts" }
+    - { project: learning-app, where: "CLAUDE.md", how: "Built by the agent; must update this site when a project's decisions change" }
+
+- id: code-review
+  name: AI code review (/code-review)
+  layer: ai
+  what: A strong existing AI reviewer run on each change as a second opinion, before the human review.
+  why: >-
+    It catches what the author misses. On Road Risk it found 8 real issues in one PR (crashes after a
+    past reference year counted at full weight) and 9 in another (the documented rebuild command didn't
+    work). Fine-tuning our own reviewer waits until there's an eval set (ADR-0005).
+  alternatives:
+    - { name: "Fine-tune a small reviewer now", why_not: "No training data or evals; a confident weak reviewer is worse than none." }
+  used_in:
+    - { project: road-risk, where: "every non-trivial PR", how: "Findings checked and fixed test-first; recorded in the devlog" }
+    - { project: project-viewer, where: "PR #3", how: "6 issues found and fixed with tests" }
