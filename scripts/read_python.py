@@ -73,6 +73,8 @@ class Reader:
                 continue
             mod = module_name(rel)
             self.modules[mod] = rel.as_posix()
+            if mod.startswith("src."):  # src layout: the code imports `pkg.mod`, not `src.pkg.mod`
+                self.modules.setdefault(mod[4:], rel.as_posix())
             trees[rel.as_posix()] = (tree, source)
         for rel, (tree, source) in trees.items():
             self.read_file(rel, tree, source)
@@ -214,6 +216,12 @@ class Reader:
                         tid = f"{cls_id}.{f.attr}"
                 elif f.value.id in imports and imports[f.value.id][1] is None:
                     tid = self.target(imports[f.value.id][0], f.attr)
+                elif f.value.id in imports:  # an imported class: `Cache.key(...)`
+                    cls_id = self.target(*imports[f.value.id])
+                    if cls_id and f"{cls_id}.{f.attr}" in self.symbols:
+                        tid = f"{cls_id}.{f.attr}"
+                elif f"{rel}::{f.value.id}.{f.attr}" in self.symbols:  # a class in the same file
+                    tid = f"{rel}::{f.value.id}.{f.attr}"
             if tid and tid != sid:
                 found.add(tid)
         return found

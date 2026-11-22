@@ -329,8 +329,8 @@
       explain: "The full sidebar is defined once; each page keeps only its own area's group, and previous/next links stay inside it."
     - title: Spell out each acronym once
       where: "src/lib/acronyms.mjs::splitAcronyms"
-      code: "const expand = !seen.has(short) && !alreadySpelled;"
-      explain: "The first use in a page (or card) becomes 'ADR (Architecture Decision Record)'; later uses show the full form on hover."
+      code: "const expand = !seen.has(short) && !alreadySpelled && !glued;"
+      explain: "The first use in a page (or card) becomes 'ADR (Architecture Decision Record)'; later uses show the full form on hover. Acronyms glued to an identifier, like EPSG:3067, are never expanded inside it."
     - title: Load the data at build time
       where: "src/components/Decisions.astro"
       code: ".filter((d) => d.project === project)"

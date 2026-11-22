@@ -1,0 +1,48 @@
+---
+import { getCollection } from 'astro:content';
+import { md } from '../lib/text';
+import { codeHref } from '../lib/teach';
+import { PROJECT_NAMES } from '../lib/site';
+interface Props { project?: string }
+const { project } = Astro.props;
+const CATS: Record<string, string> = { creational: 'Creational', structural: 'Structural', behavioural: 'Behavioural', concurrency: 'Concurrency', data: 'Data', reliability: 'Reliability', integration: 'Integration', security: 'Security', ui: 'User interface', testing: 'Testing', architecture: 'Architecture' };
+const all = (await getCollection('patterns')).map((e) => e.data)
+  .map((p) => ({ ...p, uses: project ? p.uses.filter((u) => u.project === project) : p.uses }))
+  .filter((p) => p.uses.length > 0);
+const cats = Object.keys(CATS).filter((c) => all.some((p) => p.category === c));
+---
+<div class="not-content">
+  <nav class="lx-chips" aria-label="Pattern categories">{cats.map((c) => <a class="lx-chip" href={`#cat-${c}`}>{CATS[c]} ({all.filter((p) => p.category === c).length})</a>)}</nav>
+  {cats.map((c) => (
+    <section id={`cat-${c}`}>
+      <h2 class="lx-h2">{CATS[c]}</h2>
+      {all.filter((p) => p.category === c).map((p) => {
+        const seen = new Set<string>();
+        return (
+          <article class="lx-card lx-pattern" id={p.id}>
+            <h3>{p.name}{p.aka && <span class="lx-muted lx-aka"> · also called {p.aka}</span>}</h3>
+            <div class="lx-twocol">
+              <div><h4>Problem</h4><p set:html={md(p.problem, seen)} /></div>
+              <div><h4>Solution</h4><p set:html={md(p.solution, seen)} /></div>
+            </div>
+            <h4>Where it's used</h4>
+            <ul class="lx-uses">
+              {p.uses.map((u) => (
+                <li>
+                  {!project && <span class={`lx-pill lx-pill--${u.project}`}>{PROJECT_NAMES[u.project]}</span>}
+                  <a href={codeHref(u.project, u.where)}><code>{u.where}</code></a>
+                  <p set:html={md(u.what, seen)} />
+                  <p class="lx-muted"><strong>Why here:</strong> <span set:html={md(u.why, seen)} /></p>
+                </li>
+              ))}
+            </ul>
+            <div class="lx-twocol lx-twocol--quiet">
+              <p><strong>Trade-off:</strong> <span set:html={md(p.tradeoff, seen)} /></p>
+              <p><strong>When not to use it:</strong> <span set:html={md(p.when_not, seen)} /></p>
+            </div>
+          </article>
+        );
+      })}
+    </section>
+  ))}
+</div>

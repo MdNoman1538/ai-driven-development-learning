@@ -185,7 +185,9 @@
    "doc": "'src/shop/orders.py' -> 'src.shop.orders'; '__init__.py' names the package.",
    "calls": [],
    "called_by": [
-    "src/projectviewer/analyzers/python/extract.py::extract"
+    "src/projectviewer/analyzers/python/extract.py::extract",
+    "src/projectviewer/changes.py::_old_id",
+    "src/projectviewer/changes.py::note_target"
    ]
   },
   {
@@ -634,7 +636,16 @@
     "src/projectviewer/analyzers/python/mapper.py::discover",
     "src/projectviewer/analyzers/python/mapper.py::git_files",
     "src/projectviewer/analyzers/python/mapper.py::map_repo",
-    "src/projectviewer/analyzers/python/mapper.py::map_revision"
+    "src/projectviewer/analyzers/python/mapper.py::map_revision",
+    "src/projectviewer/changes.py::_blob",
+    "src/projectviewer/changes.py::_message",
+    "src/projectviewer/changes.py::_untracked",
+    "src/projectviewer/changes.py::change_set",
+    "src/projectviewer/changes.py::commit_list",
+    "src/projectviewer/changes.py::file_diff",
+    "src/projectviewer/changes.py::plain_moves",
+    "src/projectviewer/changes.py::renames",
+    "src/projectviewer/server.py::Project.changes"
    ]
   },
   {
@@ -686,7 +697,8 @@
     "src/projectviewer/analyzers/python/mapper.py::_keep"
    ],
    "called_by": [
-    "src/projectviewer/analyzers/python/mapper.py::map_repo"
+    "src/projectviewer/analyzers/python/mapper.py::map_repo",
+    "src/projectviewer/server.py::Project.fingerprint"
    ]
   },
   {
@@ -774,7 +786,8 @@
    "decorators": [],
    "doc": "Pass 1 for (path, bytes) items: from the cache when possible, parsed (maybe in parallel) otherwise.",
    "calls": [
-    "src/projectviewer/analyzers/python/mapper.py::_extract_job"
+    "src/projectviewer/analyzers/python/mapper.py::_extract_job",
+    "src/projectviewer/cache.py::Cache.key"
    ],
    "called_by": [
     "src/projectviewer/analyzers/python/mapper.py::_world"
@@ -862,7 +875,15 @@
     "src/projectviewer/analyzers/python/mapper.py::_world",
     "src/projectviewer/analyzers/python/mapper.py::discover"
    ],
-   "called_by": []
+   "called_by": [
+    "src/projectviewer/changes.py::change_set",
+    "src/projectviewer/cli.py::main",
+    "src/projectviewer/server.py::Project.current",
+    "tests/conftest.py::world",
+    "tests/test_python_cartographer.py::test_cache_hits_on_second_run_and_misses_after_edit",
+    "tests/test_python_cartographer.py::test_cached_and_uncached_worlds_are_identical",
+    "tests/test_python_cartographer.py::test_parallel_and_serial_parsing_give_identical_worlds"
+   ]
   },
   {
    "id": "src/projectviewer/analyzers/python/mapper.py::map_revision",
@@ -902,7 +923,9 @@
     "src/projectviewer/analyzers/python/mapper.py::_world",
     "src/projectviewer/analyzers/python/mapper.py::git_files"
    ],
-   "called_by": []
+   "called_by": [
+    "src/projectviewer/changes.py::change_set"
+   ]
   },
   {
    "id": "src/projectviewer/analyzers/python/resolve.py::_weaker",
@@ -1516,7 +1539,11 @@
    "bases": [],
    "doc": null,
    "fields": [],
-   "called_by": []
+   "called_by": [
+    "src/projectviewer/cli.py::main",
+    "tests/test_python_cartographer.py::test_cache_hits_on_second_run_and_misses_after_edit",
+    "tests/test_python_cartographer.py::test_cached_and_uncached_worlds_are_identical"
+   ]
   },
   {
    "id": "src/projectviewer/cache.py::Cache.__init__",
@@ -1573,7 +1600,9 @@
    ],
    "doc": null,
    "calls": [],
-   "called_by": []
+   "called_by": [
+    "src/projectviewer/analyzers/python/mapper.py::_analyse"
+   ]
   },
   {
    "id": "src/projectviewer/cache.py::Cache._path",
@@ -1674,7 +1703,9 @@
    "calls": [],
    "called_by": [
     "src/projectviewer/changes.py::change_set",
-    "src/projectviewer/changes.py::commit_list"
+    "src/projectviewer/changes.py::commit_list",
+    "tests/test_changes.py::test_notes_from_several_changes_sections_as_in_a_squash_commit",
+    "tests/test_changes.py::test_parse_notes_formats"
    ]
   },
   {
@@ -1721,7 +1752,9 @@
    "async": false,
    "decorators": [],
    "doc": "Node id a note talks about: a symbol (py:module.Qual.name) or a whole file.",
-   "calls": [],
+   "calls": [
+    "src/projectviewer/analyzers/python/extract.py::module_name"
+   ],
    "called_by": [
     "src/projectviewer/changes.py::change_set"
    ]
@@ -1774,7 +1807,9 @@
    "async": false,
    "decorators": [],
    "doc": "{new path: old path} for files git sees as moved (rename detection, -M).",
-   "calls": [],
+   "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::_git"
+   ],
    "called_by": [
     "src/projectviewer/changes.py::change_set",
     "src/projectviewer/changes.py::file_diff",
@@ -1808,7 +1843,9 @@
    "async": false,
    "decorators": [],
    "doc": "The id the same thing had before its file was moved (ids are derived from paths).",
-   "calls": [],
+   "calls": [
+    "src/projectviewer/analyzers/python/extract.py::module_name"
+   ],
    "called_by": [
     "src/projectviewer/changes.py::diff_worlds"
    ]
@@ -1877,7 +1914,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::_git"
+   ],
    "called_by": [
     "src/projectviewer/changes.py::change_set",
     "src/projectviewer/changes.py::working_moves"
@@ -1910,7 +1949,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::_git"
+   ],
    "called_by": [
     "src/projectviewer/changes.py::change_set",
     "src/projectviewer/changes.py::file_diff",
@@ -1987,6 +2028,7 @@
    "decorators": [],
    "doc": "{new path: old path} for files moved WITHOUT git (plain `mv`, an editor rename): a tracked file\nthat disappeared and an untracked file with similar content. git cannot see these yet.",
    "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::_git",
     "src/projectviewer/changes.py::_blob"
    ],
    "called_by": [
@@ -2049,7 +2091,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::_git"
+   ],
    "called_by": [
     "src/projectviewer/changes.py::change_set"
    ]
@@ -2088,6 +2132,9 @@
    "decorators": [],
    "doc": "ref = \"working\" (uncommitted changes vs HEAD, including untracked files) or a commit.",
    "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::_git",
+    "src/projectviewer/analyzers/python/mapper.py::map_repo",
+    "src/projectviewer/analyzers/python/mapper.py::map_revision",
     "src/projectviewer/changes.py::_blob",
     "src/projectviewer/changes.py::_message",
     "src/projectviewer/changes.py::_unified",
@@ -2099,7 +2146,18 @@
     "src/projectviewer/changes.py::renames",
     "src/projectviewer/changes.py::working_moves"
    ],
-   "called_by": []
+   "called_by": [
+    "src/projectviewer/server.py::Project.changes",
+    "tests/test_changes.py::test_change_notes_are_attached_to_symbols",
+    "tests/test_changes.py::test_commit_changes_and_their_impact",
+    "tests/test_changes.py::test_edited_class_in_a_moved_file_still_seeds_impact",
+    "tests/test_changes.py::test_first_commit_has_everything_new",
+    "tests/test_changes.py::test_live_working_copy_changes",
+    "tests/test_changes.py::test_moved_files_are_moved_not_removed_and_new",
+    "tests/test_changes.py::test_pure_move_is_listed_in_the_change_files",
+    "tests/test_changes.py::test_untracked_file_with_a_space_in_its_name",
+    "tests/test_changes.py::test_working_copy_detects_a_plain_mv_without_git"
+   ]
   },
   {
    "id": "src/projectviewer/changes.py::commit_list",
@@ -2126,10 +2184,14 @@
    "decorators": [],
    "doc": "Recent commits, newest first, with how many change notes and issue references each has.",
    "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::_git",
     "src/projectviewer/changes.py::parse_notes",
     "src/projectviewer/changes.py::parse_refs"
    ],
-   "called_by": []
+   "called_by": [
+    "src/projectviewer/server.py::make_server",
+    "tests/test_changes.py::test_commit_list"
+   ]
   },
   {
    "id": "src/projectviewer/changes.py::file_diff",
@@ -2159,12 +2221,16 @@
    "decorators": [],
    "doc": "Unified diff of one file for a change set (the \"how\"). For a moved file it compares with the\nold path, so it shows only the real edits, not the whole file as new.",
    "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::_git",
     "src/projectviewer/changes.py::_blob",
     "src/projectviewer/changes.py::_unified",
     "src/projectviewer/changes.py::renames",
     "src/projectviewer/changes.py::working_moves"
    ],
-   "called_by": []
+   "called_by": [
+    "src/projectviewer/server.py::make_server",
+    "tests/test_changes.py::test_diff_of_a_moved_file_shows_only_the_real_edits"
+   ]
   },
   {
    "id": "src/projectviewer/cli.py::_summary",
@@ -2211,7 +2277,11 @@
    "decorators": [],
    "doc": null,
    "calls": [
-    "src/projectviewer/cli.py::_summary"
+    "src/projectviewer/analyzers/python/mapper.py::map_repo",
+    "src/projectviewer/cache.py::Cache",
+    "src/projectviewer/cli.py::_summary",
+    "src/projectviewer/hook.py::main",
+    "src/projectviewer/server.py::make_server"
    ],
    "called_by": []
   },
@@ -2240,7 +2310,9 @@
    "doc": null,
    "calls": [],
    "called_by": [
-    "src/projectviewer/hook.py::main"
+    "src/projectviewer/hook.py::main",
+    "tests/test_activity.py::test_hook_event_for_an_edit",
+    "tests/test_activity.py::test_prompts_are_only_recorded_when_switched_on"
    ]
   },
   {
@@ -2274,7 +2346,8 @@
    "doc": null,
    "calls": [],
    "called_by": [
-    "src/projectviewer/hook.py::main"
+    "src/projectviewer/hook.py::main",
+    "tests/test_activity.py::test_send_never_fails_or_blocks_when_no_viewer_runs"
    ]
   },
   {
@@ -2301,7 +2374,9 @@
     "src/projectviewer/hook.py::event_from_hook",
     "src/projectviewer/hook.py::send"
    ],
-   "called_by": []
+   "called_by": [
+    "src/projectviewer/cli.py::main"
+   ]
   },
   {
    "id": "src/projectviewer/registry.py::config_file",
@@ -2423,7 +2498,8 @@
     "src/projectviewer/registry.py::slug"
    ],
    "called_by": [
-    "src/projectviewer/registry.py::add"
+    "src/projectviewer/registry.py::add",
+    "src/projectviewer/server.py::make_server"
    ]
   },
   {
@@ -2488,7 +2564,8 @@
    "doc": "One repository: its current world (rebuilt only when files change) and its change sets.",
    "fields": [],
    "called_by": [
-    "src/projectviewer/server.py::make_server"
+    "src/projectviewer/server.py::make_server",
+    "tests/test_changes.py::test_head_change_set_follows_new_commits"
    ]
   },
   {
@@ -2535,7 +2612,9 @@
    "async": false,
    "decorators": [],
    "doc": "(version, last change in ms): cheap, from paths + mtimes + sizes of the Python files.",
-   "calls": [],
+   "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::discover"
+   ],
    "called_by": [
     "src/projectviewer/server.py::Project.current"
    ]
@@ -2555,6 +2634,7 @@
    "decorators": [],
    "doc": "(version, json bytes, gzipped json bytes); re-maps only if the version changed.",
    "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::map_repo",
     "src/projectviewer/server.py::Project.fingerprint"
    ],
    "called_by": [
@@ -2606,6 +2686,8 @@
    "decorators": [],
    "doc": null,
    "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::_git",
+    "src/projectviewer/changes.py::change_set",
     "src/projectviewer/server.py::Project.current"
    ],
    "called_by": []
@@ -2650,9 +2732,17 @@
    "decorators": [],
    "doc": null,
    "calls": [
+    "src/projectviewer/changes.py::commit_list",
+    "src/projectviewer/changes.py::file_diff",
+    "src/projectviewer/registry.py::unique_id",
     "src/projectviewer/server.py::Project"
    ],
-   "called_by": []
+   "called_by": [
+    "src/projectviewer/cli.py::main",
+    "tests/test_activity.py::served",
+    "tests/test_server.py::start",
+    "tests/test_server.py::test_binds_to_localhost_only"
+   ]
   },
   {
    "id": "tests/conftest.py::project",
@@ -2790,6 +2880,7 @@
    ],
    "doc": null,
    "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::map_repo",
     "tests/conftest.py::W",
     "tests/conftest.py::project"
    ],
@@ -2851,7 +2942,9 @@
     "pytest.fixture"
    ],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/server.py::make_server"
+   ],
    "called_by": []
   },
   {
@@ -2868,7 +2961,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/hook.py::event_from_hook"
+   ],
    "called_by": []
   },
   {
@@ -2885,7 +2980,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/hook.py::event_from_hook"
+   ],
    "called_by": []
   },
   {
@@ -2902,7 +2999,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/hook.py::send"
+   ],
    "called_by": []
   },
   {
@@ -3119,6 +3218,7 @@
    "decorators": [],
    "doc": null,
    "calls": [
+    "src/projectviewer/changes.py::change_set",
     "tests/test_changes.py::git"
    ],
    "called_by": []
@@ -3143,6 +3243,7 @@
    "decorators": [],
    "doc": null,
    "calls": [
+    "src/projectviewer/changes.py::change_set",
     "tests/test_changes.py::git"
    ],
    "called_by": []
@@ -3167,6 +3268,7 @@
    "decorators": [],
    "doc": null,
    "calls": [
+    "src/projectviewer/changes.py::change_set",
     "tests/test_changes.py::write"
    ],
    "called_by": []
@@ -3191,6 +3293,7 @@
    "decorators": [],
    "doc": null,
    "calls": [
+    "src/projectviewer/changes.py::change_set",
     "tests/test_changes.py::git"
    ],
    "called_by": []
@@ -3214,7 +3317,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/changes.py::commit_list"
+   ],
    "called_by": []
   },
   {
@@ -3231,7 +3336,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/changes.py::parse_notes"
+   ],
    "called_by": []
   },
   {
@@ -3254,6 +3361,7 @@
    "decorators": [],
    "doc": null,
    "calls": [
+    "src/projectviewer/changes.py::change_set",
     "tests/test_changes.py::git",
     "tests/test_changes.py::write"
    ],
@@ -3311,6 +3419,7 @@
    "decorators": [],
    "doc": null,
    "calls": [
+    "src/projectviewer/changes.py::file_diff",
     "tests/test_changes.py::_move_tax"
    ],
    "called_by": []
@@ -3335,6 +3444,7 @@
    "decorators": [],
    "doc": null,
    "calls": [
+    "src/projectviewer/changes.py::change_set",
     "tests/test_changes.py::_move_tax"
    ],
    "called_by": []
@@ -3359,6 +3469,7 @@
    "decorators": [],
    "doc": null,
    "calls": [
+    "src/projectviewer/changes.py::change_set",
     "tests/test_changes.py::git",
     "tests/test_changes.py::write"
    ],
@@ -3383,7 +3494,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/changes.py::change_set"
+   ],
    "called_by": []
   },
   {
@@ -3406,6 +3519,7 @@
    "decorators": [],
    "doc": null,
    "calls": [
+    "src/projectviewer/changes.py::change_set",
     "tests/test_changes.py::write"
    ],
    "called_by": []
@@ -3430,6 +3544,7 @@
    "decorators": [],
    "doc": null,
    "calls": [
+    "src/projectviewer/server.py::Project",
     "tests/test_changes.py::git",
     "tests/test_changes.py::write"
    ],
@@ -3449,7 +3564,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/changes.py::parse_notes"
+   ],
    "called_by": []
   },
   {
@@ -3893,7 +4010,10 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::map_repo",
+    "src/projectviewer/cache.py::Cache"
+   ],
    "called_by": []
   },
   {
@@ -3915,7 +4035,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::map_repo"
+   ],
    "called_by": []
   },
   {
@@ -3941,7 +4063,10 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/analyzers/python/mapper.py::map_repo",
+    "src/projectviewer/cache.py::Cache"
+   ],
    "called_by": []
   },
   {
@@ -4120,7 +4245,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/server.py::make_server"
+   ],
    "called_by": [
     "tests/test_server.py::test_missing_viewer_build_shows_instructions",
     "tests/test_server.py::two_projects"
@@ -4448,7 +4575,9 @@
    "async": false,
    "decorators": [],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/projectviewer/server.py::make_server"
+   ],
    "called_by": []
   },
   {

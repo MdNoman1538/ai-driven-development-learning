@@ -3,10 +3,10 @@ import { getCollection } from 'astro:content';
 import ArchitectureExplorer from './ArchitectureExplorer';
 
 interface Props { project: string }
-// "Today" first, then planned views.
+// C4 order: context → containers → components, then planned views.
 const views = (await getCollection('architecture'))
   .map((e) => e.data)
   .filter((v) => v.project === Astro.props.project)
-  .sort((a, b) => Number(b.id.endsWith('-today')) - Number(a.id.endsWith('-today')));
+  .sort((a, b) => a.order - b.order);
 ---
 <ArchitectureExplorer client:visible views={views} />

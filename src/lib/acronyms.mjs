@@ -23,8 +23,9 @@ export function splitAcronyms(text, seen) {
     if (at > last) parts.push(text.slice(last, at));
     const after = text.slice(at + whole.length);
     const alreadySpelled = /^\s*\(/.test(after);
-    const expand = !seen.has(short) && !alreadySpelled;
-    seen.add(short);
+    const glued = /^[:\-]\w/.test(after); // part of an identifier such as EPSG:3067
+    const expand = !seen.has(short) && !alreadySpelled && !glued;
+    if (!glued) seen.add(short);
     parts.push({ short: whole, full: ACRONYMS[short] + (plural ? 's' : ''), expand });
     last = at + whole.length;
   }

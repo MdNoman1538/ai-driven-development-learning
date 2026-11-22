@@ -660,3 +660,94 @@
   revisit: When quizzes (L3) arrive; picks can then feed spaced repetition.
   lesson: To learn judgement, practise making the judgement, then check it.
   stage: L1
+
+- id: la-0006
+  project: learning-app
+  ref: ADR-0006
+  title: Scoped projects and a separate Combined knowledge area
+  date: "2026-11-22"
+  status: Accepted
+  question: "Version 1 showed every project in one sidebar. The owner found it confusing. How should a multi-project learning site be navigated?"
+  context: "Inside a project the learner wants only that project; shared knowledge (concepts, patterns, glossary) spans all projects."
+  options:
+    - name: One sidebar for everything
+      summary: Keep version 1's structure.
+      pros: [Simple]
+      cons: [No sense of place, Projects blur together]
+    - name: Separate sites per project
+      summary: One site each.
+      pros: [Clean separation]
+      cons: [Shared knowledge duplicated, Cross-links break]
+    - name: One site, scoped navigation, plus Combined knowledge
+      summary: Each project area shows only its own sidebar; shared material lives in one combined area.
+      pros: [Focus inside a project, One home for shared knowledge, Defined once, filtered per page]
+      cons: [Needs route middleware]
+  chosen: 2
+  why:
+    - "Progressive disclosure: show the learner one project at a time."
+    - The full sidebar is defined once; middleware filters it per page, so nothing can drift.
+  consequences:
+    - Concepts live once; each project shows how it uses them.
+    - Acronyms are spelled out automatically from one list.
+  revisit: If the site grows to many projects; then add search and filters to the home page.
+  lesson: Structure is part of the user experience. Show people only what belongs to where they are.
+  stage: L2
+
+- id: la-0007
+  project: learning-app
+  ref: ADR-0007
+  title: Code-level teaching, read from the code and verified against it
+  date: "2026-11-22"
+  status: Accepted
+  question: How do you teach a codebase down to functions and parameters without the explanations going stale?
+  context: Hand-written code explanations go out of date with the first refactor.
+  options:
+    - name: Write code explanations by hand
+      summary: Describe functions and snippets manually.
+      pros: [Flexible]
+      cons: [Stale within weeks]
+    - name: Reuse projectViewer's analyser
+      summary: Import its world format.
+      pros: [Already extracts the facts]
+      cons: [Couples the site to another tool, Can't read TypeScript yet]
+    - name: Own small readers, plus verification
+      summary: Read the code with each language's own parser; check every reference and snippet at build time.
+      pros: [Always current or failing, No dependency on another tool, Reads this site's TypeScript too]
+      cons: [Simpler call resolution]
+  chosen: 2
+  why:
+    - "The build checks every code reference and every quoted snippet, so a walkthrough can't silently lie."
+    - Only certain calls are recorded; nothing is guessed.
+  consequences:
+    - "A refactor in a project fails this site's build until the teaching is updated; it caught two stale items during this very change."
+  revisit: If call resolution needs to be much richer; then consider reusing projectViewer's analyser as a library.
+  lesson: Documentation that can be checked should be checked, like code.
+  stage: L2
+
+- id: la-0008
+  project: learning-app
+  ref: ADR-0008
+  title: Learning aligned with each project's development stages
+  date: "2026-11-22"
+  status: Accepted
+  question: Should the site teach a fixed curriculum, or grow with each project's stages?
+  context: Learning everything up front is overwhelming; learning after the fact doesn't stick.
+  options:
+    - name: A fixed curriculum
+      summary: Teach everything independently of the projects.
+      pros: [Complete]
+      cons: [Disconnected from what is being built]
+    - name: Stage-tagged content and a learning path per project
+      summary: Each item belongs to a stage; the current stage is open and the next one says what to prepare.
+      pros: [Just-in-time learning, Grows with the projects]
+      cons: [Every item needs a stage tag]
+  chosen: 1
+  why:
+    - "You learn what the current stage needs, while it's being built."
+    - The build fails if a project's own status moves past the stage marked active here.
+  consequences:
+    - "Finishing a stage in a project includes updating its learning content."
+  revisit: When quizzes and katas arrive; they'll use the same stage tags.
+  lesson: Teach the idea when it's needed, then keep it alive by connecting it to real work.
+  stage: L2
+

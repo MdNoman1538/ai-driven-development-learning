@@ -1798,7 +1798,8 @@
    "calls": [],
    "called_by": [
     "src/api/main.py::evaluate_route_corridor",
-    "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point"
+    "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point",
+    "tests/test_risk_model.py::test_tier_boundaries"
    ]
   },
   {
@@ -3490,7 +3491,9 @@
     "pytest.mark.parametrize(('score', 'tier'), [(0.0, 'LOW'), (24.9, 'LOW'), (25.0, 'MODERATE'), (49.9, 'MODERATE'), (50.0, 'HIGH'), (74.9, 'HIGH'), (75.0, 'CRITICAL'), (100.0, 'CRITICAL')])"
    ],
    "doc": null,
-   "calls": [],
+   "calls": [
+    "src/scoring/risk_engine.py::SpatialRiskEngine.classify_tier"
+   ],
    "called_by": []
   },
   {

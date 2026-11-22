@@ -1,0 +1,62 @@
+---
+import { getCollection } from 'astro:content';
+import { refLink } from '../lib/links';
+import { md } from '../lib/text';
+const areas = (await getCollection('competencies')).map((e) => e.data).sort((a, b) => a.order - b.order);
+const decisions = (await getCollection('decisions')).map((e) => e.data);
+const tradeoffs = (await getCollection('tradeoffs')).map((e) => e.data);
+const quality = (await getCollection('quality')).map((e) => e.data);
+const walkthroughs = (await getCollection('walkthroughs')).map((e) => e.data);
+const titles: Record<string, string> = {};
+for (const d of decisions) titles[`decision:${d.id}`] = `${d.ref} ${d.title}`;
+for (const t of tradeoffs) titles[`tradeoff:${t.id}`] = t.question;
+for (const q of quality) titles[`quality:${q.id}`] = q.attribute;
+for (const w of walkthroughs) titles[`walkthrough:${w.id}`] = w.title;
+for (const p of (await getCollection('patterns'))) titles[`pattern:${p.data.id}`] = p.data.name;
+for (const a of (await getCollection('algorithms'))) titles[`algorithm:${a.data.id}`] = a.data.name;
+for (const s of (await getCollection('styles'))) titles[`style:${s.data.id}`] = s.data.name;
+for (const c of (await getCollection('docs', (e) => !!e.data.concept))) titles[`concept:${c.id.replace(/^concepts\//, '')}`] = c.data.title;
+const projectOf = (kind: string, id: string) =>
+  kind === 'decision' ? decisions.find((d) => d.id === id)?.project :
+  kind === 'tradeoff' ? tradeoffs.find((t) => t.id === id)?.project :
+  kind === 'quality' ? quality.find((q) => q.id === id)?.project :
+  kind === 'walkthrough' ? walkthroughs.find((w) => w.id === id)?.project : undefined;
+const topics = areas.flatMap((a) => a.topics);
+const count = (s: string) => topics.filter((t) => t.status === s).length;
+const STATUS: Record<string, string> = { strong: 'Learn here', partial: 'Partly', gap: 'Gap' };
+---
+<div class="not-content">
+  <div class="lx-qsum">
+    <div class="lx-qsum__item lx-c--strong"><strong>{count('strong')}</strong><span>topics with real evidence</span></div>
+    <div class="lx-qsum__item lx-c--partial"><strong>{count('partial')}</strong><span>partly covered</span></div>
+    <div class="lx-qsum__item lx-c--gap"><strong>{count('gap')}</strong><span>gaps to fill</span></div>
+  </div>
+  <div class="lx-areas">
+    {areas.map((a) => (
+      <article class="lx-card lx-area" id={a.id}>
+        <header><span class="lx-area__no">{a.order}</span><h3>{a.name}</h3></header>
+        <p class="lx-muted" set:html={md(a.why)} />
+        <ul class="lx-topics">
+          {a.topics.map((t) => {
+            const seen = new Set<string>();
+            return (
+              <li class={`lx-topic lx-c--${t.status}`}>
+                <div class="lx-topic__head"><strong>{t.name}</strong><span class={`lx-badge lx-c--${t.status}`}>{STATUS[t.status]}</span></div>
+                <p set:html={md(t.what, seen)} />
+                {t.evidence.length > 0 && (
+                  <p class="lx-topic__ev">
+                    {t.evidence.map((ev) => {
+                      const l = refLink(ev, projectOf);
+                      return l ? <a class="lx-chip" href={l.href}>{titles[ev] ?? l.label}</a> : null;
+                    })}
+                  </p>
+                )}
+                {t.gap && <p class="lx-gap" set:html={md(t.gap, seen)} />}
+              </li>
+            );
+          })}
+        </ul>
+      </article>
+    ))}
+  </div>
+</div>

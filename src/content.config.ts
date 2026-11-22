@@ -284,7 +284,7 @@ export const collections = {
             projects: z.array(projectId).min(1),
             level: z.enum(['foundation', 'core', 'advanced']),
             // How each project uses this idea, and at which stage: shown inside that project only.
-            uses: z.record(projectId, z.object({ how: z.string(), stage: z.string() })).default({}),
+            uses: z.record(z.string(), z.object({ how: z.string(), stage: z.string() })).default({}),
           })
           .optional(),
       }),

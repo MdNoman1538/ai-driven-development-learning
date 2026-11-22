@@ -9,11 +9,11 @@ record:
   project: learning-app
   kind: decisions
   source: https://github.com/MdNoman1538/ai-driven-development-learning/blob/main/docs/decisions/0001-static-site-astro-starlight.md
-  commit: e8b8ef4
+  commit: a006d3a
 ---
 
 :::note[Original record]
-Imported unchanged from [`docs/decisions/0001-static-site-astro-starlight.md`](https://github.com/MdNoman1538/ai-driven-development-learning/blob/main/docs/decisions/0001-static-site-astro-starlight.md) at commit `e8b8ef4`. It is the project's own record; the teaching pages explain it.
+Imported unchanged from [`docs/decisions/0001-static-site-astro-starlight.md`](https://github.com/MdNoman1538/ai-driven-development-learning/blob/main/docs/decisions/0001-static-site-astro-starlight.md) at commit `a006d3a`. It is the project's own record; the teaching pages explain it.
 :::
 
 - **Status:** Accepted

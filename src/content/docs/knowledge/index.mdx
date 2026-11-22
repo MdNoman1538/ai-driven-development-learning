@@ -1,0 +1,20 @@
+---
+title: "Combined knowledge"
+description: "Everything that spans the projects: the architect's competency map, styles, patterns, trade-offs, algorithms, concepts and the glossary."
+tableOfContents: false
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Inside each project you see only that project. **Here, everything is combined**: the knowledge itself, organised the way an architect thinks about it, with every item linking back to where a real project uses it.
+
+<CardGrid>
+  <LinkCard title="Architect's competency map" description="13 knowledge areas a software architect needs, what you can learn here, and the honest gaps." href="competencies/" />
+  <LinkCard title="Architecture styles" description="The overall shapes of systems: pipeline, modular monolith, plugins, cloud/edge split…" href="styles/" />
+  <LinkCard title="Design pattern catalogue" description="Every pattern used across the projects, by category." href="patterns/" />
+  <LinkCard title="Trade-off library" description="Why this, not that: every medium-sized choice, across projects." href="tradeoffs/" />
+  <LinkCard title="Algorithms & data science" description="Every method used or planned, with the Risk Score Playground." href="algorithms/" />
+  <LinkCard title="Concept library" description="The ideas behind it all, each with questions to check yourself." href="../concepts/" />
+  <LinkCard title="Glossary" description="Every term in plain words." href="../glossary/" />
+  <LinkCard title="How to learn here" description="The method: pick first, then reveal; zoom from system to code." href="../start/how-to-learn/" />
+</CardGrid>

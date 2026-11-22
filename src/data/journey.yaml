@@ -112,3 +112,21 @@
   decided: [la-0001, la-0002, la-0003, la-0004, la-0005]
   concepts: [static-sites-and-content-as-data, architecture-decision-records]
   lesson: Prove the riskiest assumption on a tiny skeleton before investing in the rest.
+- id: s8-learning-v2
+  date: "2026-11-22"
+  projects: [learning-app]
+  title: "Version 2: scoped projects, code-level learning, stage-aligned paths"
+  summary: >-
+    The site grew from teaching decisions to teaching whole systems: quality attributes, C4
+    architecture, walkthroughs through real code, a code and API reference, design patterns,
+    trade-offs, algorithms with a playground, and a learning path for each development stage.
+  did:
+    - "Scoped navigation per project, Combined knowledge, automatic full forms for acronyms"
+    - "Own code readers for Python and TypeScript; projectViewer's viewer read too"
+    - "47 walkthrough snippets verified word for word on every build"
+    - "A 13-area architect's competency map with honest gaps"
+    - "The checks caught a new unexplained dependency and a stale snippet during the change itself"
+  decided: [la-0006, la-0007, la-0008]
+  concepts: [static-analysis-and-code-maps, static-sites-and-content-as-data, testing-strategy]
+  lesson: When documentation can be checked against the code, make the build check it.
+

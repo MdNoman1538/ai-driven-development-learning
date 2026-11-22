@@ -17,6 +17,14 @@ When a tracked project adds or changes a tool, a decision (ADR) or a significant
 3. `npm run check && npm run build` must pass.
 4. Add a devlog entry in `docs/devlog/` for changes to this site itself; an ADR in `docs/decisions/` for significant decisions.
 
+## Stage-aligned learning (ADR-0008)
+
+Every teaching item carries the `stage` (phase id from `src/data/projects.yaml`) it belongs to. **When a project finishes a stage or starts a new one:** update `state` of its phases, add the new stage's `prepare` concepts, and add walkthroughs, patterns, trade-offs, algorithms (planned → used) and quality scenarios for what was built. The coverage check fails when a project's own status line no longer contains its `status_match`.
+
+## Code-level content (ADR-0007)
+
+Reference code as `file::Qualified.name` (or a file path). Walkthrough `code` must be copied from the source; the build checks it word for word. If a project refactors, update the references and snippets the coverage check names.
+
 ## Public content rules (ADR-0004)
 
 Only public repositories. Never publish personal data, email addresses, local paths, secrets, or details of private tools beyond their own public records. The sync's privacy guard enforces part of this; review the rest.

@@ -1,41 +1,55 @@
 ---
-import { getEntry } from 'astro:content';
+import { getCollection, getEntry } from 'astro:content';
 import facts from '../generated/sources.json';
 import { href } from '../lib/site';
+import { md } from '../lib/text';
+import LearningPath from './LearningPath.astro';
 
-interface Props { project: string; sections: [string, string, string][] }
-const { project, sections } = Astro.props;
+interface Props { project: string }
+const { project } = Astro.props;
 const p = (await getEntry('projects', project))!.data;
 const f = (facts as any)[project];
+// The project's own status line, reduced to its phase sentence, without Markdown.
+const phaseSentence = (line: string | null) => {
+  if (!line) return null;
+  const part = line.split('·').map((x) => x.trim()).find((x) => /phase/i.test(x)) ?? line;
+  return part.replace(/[`*_]/g, '').split(/\.\s/)[0].replace(/\.$/, '');
+};
+const styles = (await getCollection('styles')).filter((s) => p.styles.includes(s.data.id));
+const count = async (c: string, pred: (x: any) => boolean) => (await getCollection(c as any)).filter((e: any) => pred(e.data)).length;
+const stats = [
+  ['Walkthroughs', await count('walkthroughs', (w) => w.project === project), 'walkthroughs'],
+  ['Decisions', await count('decisions', (d) => d.project === project), 'decisions'],
+  ['Trade-offs', await count('tradeoffs', (t) => t.project === project), 'tradeoffs'],
+  ['Patterns', await count('patterns', (x) => x.uses.some((u: any) => u.project === project)), 'patterns'],
+  ['Algorithms', await count('algorithms', (x) => x.uses.some((u: any) => u.project === project)), 'algorithms'],
+  ['Quality attributes', await count('quality', (q) => q.project === project), 'quality'],
+] as const;
+const seen = new Set<string>();
 ---
 <div class="not-content lx-overview">
   <p class="lx-lead">{p.tagline}</p>
   <div class="lx-overview__grid">
-    <section class="lx-box"><h3>The problem</h3><p>{p.problem}</p></section>
-    <section class="lx-box"><h3>The goal</h3><p>{p.goal}</p></section>
+    <section class="lx-card"><h3>The problem</h3><p set:html={md(p.problem, seen)} /></section>
+    <section class="lx-card"><h3>The goal</h3><p set:html={md(p.goal, seen)} /></section>
   </div>
-  <section class="lx-box">
+  <div class="lx-statgrid">
+    {stats.map(([label, n, slug]) => <a class="lx-stat" href={href(`${project}/${slug}`)}><strong>{n}</strong><span>{label}</span></a>)}
+  </div>
+  <section class="lx-card">
     <h3>What you'll learn from this project</h3>
-    <ul>{p.learn.map((l) => <li>{l}</li>)}</ul>
+    <ul>{p.learn.map((l) => <li set:html={md(l, seen)} />)}</ul>
+    {styles.length > 0 && (
+      <p class="lx-muted">Architecture styles: {styles.map((s) => <a class="lx-chip" href={href(`knowledge/styles#${s.data.id}`)}>{s.data.name}</a>)}</p>
+    )}
   </section>
-  <h3>Explore</h3>
-  <div class="lx-sections">
-    {sections.map(([slug, title, blurb]) => (
-      <a class="lx-section" href={href(`${project}/${slug}`)}><strong>{title}</strong><span>{blurb}</span></a>
-    ))}
-  </div>
-  <h3>Phases</h3>
-  <p class="lx-muted">Status: {p.status}</p>
-  <ol class="lx-phases">
-    {p.phases.map((ph) => (
-      <li class={`lx-phase lx-phase--${ph.state}`}>
-        <span class="lx-phase__state">{ph.state}</span>
-        <strong>{ph.name}</strong>
-        <span>{ph.summary}</span>
-      </li>
-    ))}
-  </ol>
+  <h2 class="lx-h2">Learning path, stage by stage</h2>
   <p class="lx-muted">
-    Source: <a href={f.repo}>{f.repo.replace('https://github.com/', '')}</a> · {f.commits} commits · {f.mergedPullRequests} merged PRs · first commit {f.firstCommit}, latest {f.lastCommit}
+    The project is built in stages. Each stage below lists what it teaches; the current stage is open, and the next one shows what to prepare.
+    Status from the project's own records: <em>{phaseSentence(f.status) ?? p.status}</em>
+  </p>
+  <LearningPath project={project} />
+  <p class="lx-muted lx-source">
+    Source: <a href={f.repo}>{f.repo.replace('https://github.com/', '')}</a> · {f.commits} commits · {f.mergedPullRequests} merged pull requests · first commit {f.firstCommit}, latest {f.lastCommit}
   </p>
 </div>

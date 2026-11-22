@@ -6,6 +6,8 @@ tableOfContents: false
 
 import Architecture from '../../../components/Architecture.astro';
 
-Each box is a part of the system. **Click one** to see what it is, why it exists and where it lives in the code. Its connections stay highlighted. Arrows show which way data or dependencies flow; dashed lines are optional or deferred paths.
+The architecture at **C4 levels** (Context, Containers, Components, Code), the standard way to zoom into a system: **1 · Context** shows the system as one box with its users and outside systems; **2 · Containers** shows the separately running or stored pieces; **3 · Components** shows the modules inside. The fourth level, code, is the [code reference](../code/).
+
+**Click any box** to see what it is, why it exists and where it lives. Arrows show which way data or dependencies flow; dashed lines are optional or deferred paths.
 
 <Architecture project="project-viewer" />

@@ -35,6 +35,6 @@ export const onRequest = defineRouteMiddleware((context) => {
   route.head.push({
     tag: 'style',
     attrs: {},
-    content: `:root{--sl-color-accent:${dark};--lx-area:${dark}}:root[data-theme='light']{--sl-color-accent:${light};--lx-area:${light}}`,
+    content: `html:root:root, html:root[data-theme='dark']{--sl-color-accent:${dark};--lx-area:${dark}} html:root[data-theme='light']{--sl-color-accent:${light};--lx-area:${light}}`,
   });
 });
