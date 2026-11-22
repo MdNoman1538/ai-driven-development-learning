@@ -1,0 +1,28 @@
+---
+import { getCollection, getEntry } from 'astro:content';
+import { href } from '../lib/site';
+import { md } from '../lib/text';
+interface Props { project: string }
+const { project } = Astro.props;
+const p = (await getEntry('projects', project))!.data;
+const concepts = (await getCollection('docs', (e) => !!e.data.concept?.uses?.[project as 'road-risk']));
+---
+<div class="not-content">
+  {p.phases.filter((ph) => concepts.some((c) => c.data.concept!.uses[project as 'road-risk']!.stage === ph.id)).map((ph) => (
+    <section>
+      <h2 class="lx-h2">{ph.name}</h2>
+      <div class="lx-grid">
+        {concepts.filter((c) => c.data.concept!.uses[project as 'road-risk']!.stage === ph.id).map((c) => {
+          const seen = new Set<string>();
+          return (
+            <a class="lx-concept" href={href(c.id)}>
+              <strong>{c.data.title}</strong>
+              <span class="lx-concept__how" set:html={md(c.data.concept!.uses[project as 'road-risk']!.how, seen)} />
+              <span class="lx-concept__go">The full concept →</span>
+            </a>
+          );
+        })}
+      </div>
+    </section>
+  ))}
+</div>

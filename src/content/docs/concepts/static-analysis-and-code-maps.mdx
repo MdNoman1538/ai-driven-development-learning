@@ -3,7 +3,14 @@ title: "Static analysis and code maps"
 description: "Reading code without running it: syntax trees, two passes, and honest certainty."
 concept:
   summary: "Reading code without running it: syntax trees, two passes, and honest certainty."
-  projects: [project-viewer]
+  projects: [project-viewer, learning-app]
+  uses:
+    project-viewer:
+      how: Two-pass analysis of Python syntax trees with honest link certainty.
+      stage: p1
+    learning-app:
+      how: This site's own code readers produce the code reference.
+      stage: L2
   level: advanced
 ---
 

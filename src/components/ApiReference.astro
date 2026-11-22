@@ -1,0 +1,37 @@
+---
+import { getCollection } from 'astro:content';
+import { md } from '../lib/text';
+import { codeHref } from '../lib/teach';
+interface Props { project: string }
+const { project } = Astro.props;
+const entries = (await getCollection('api')).map((e) => e.data).filter((a) => a.project === project);
+---
+<div class="not-content lx-api">
+  {entries.map((a) => {
+    const seen = new Set<string>();
+    return (
+      <article class="lx-card lx-endpoint" id={a.id}>
+        <header class="lx-endpoint__head">
+          <span class={`lx-method lx-method--${a.method.toLowerCase()}`}>{a.method}</span>
+          <code class="lx-endpoint__path">{a.path}</code>
+        </header>
+        <p set:html={md(a.purpose, seen)} />
+        {a.params.length > 0 && (
+          <table class="lx-table">
+            <thead><tr><th>Parameter</th><th>In</th><th>Type</th><th>Rule</th><th>Why this rule</th></tr></thead>
+            <tbody>
+              {a.params.map((p) => (
+                <tr><td><code>{p.name}</code></td><td>{p.in}</td><td><code>{p.type}</code></td><td set:html={md(p.rule, seen)} /><td set:html={md(p.why, seen)} /></tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <div class="lx-responses">
+          {a.responses.map((r) => <div class="lx-response"><span class={`lx-status lx-status--${r.status[0]}`}>{r.status}</span><span set:html={md(r.when, seen)} /></div>)}
+        </div>
+        {a.notes && <p class="lx-note" set:html={md(a.notes, seen)} />}
+        <p class="lx-muted">Handled by <a href={codeHref(project, a.handler)}><code>{a.handler}</code></a></p>
+      </article>
+    );
+  })}
+</div>

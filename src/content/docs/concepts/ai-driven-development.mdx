@@ -4,6 +4,16 @@ description: "Rules in CLAUDE.md, a Definition of Done, and hooks: how an agent 
 concept:
   summary: "Rules in CLAUDE.md, a Definition of Done, and hooks: how an agent is kept on a professional workflow."
   projects: [road-risk, project-viewer, learning-app]
+  uses:
+    road-risk:
+      how: CLAUDE.md design rules the agent can't break silently.
+      stage: p0
+    project-viewer:
+      how: A global hook lets the viewer watch the agent work, live.
+      stage: p4
+    learning-app:
+      how: Built by the agent; keeping it current is part of finishing work in every project.
+      stage: L1
   level: foundation
 ---
 

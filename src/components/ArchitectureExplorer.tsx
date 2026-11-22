@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import Inline from './Inline';
+import Inline, { AcronymScope } from './Inline';
 
 type Node = { id: string; label: string; group: string; col: number; row: number; what: string; why: string; where: string };
 type Edge = { from: string; to: string; label?: string; style?: 'solid' | 'dashed' };
@@ -145,6 +145,7 @@ export default function ArchitectureExplorer({ views }: { views: View[] }) {
           })}
         </svg>
       </div>
+      <AcronymScope>
       <div className="lx-detail" aria-live="polite">
         {selected ? (
           <>
@@ -167,6 +168,7 @@ export default function ArchitectureExplorer({ views }: { views: View[] }) {
           <p className="lx-muted">Nothing selected. Pick any box above; its connections stay highlighted.</p>
         )}
       </div>
+      </AcronymScope>
     </div>
   );
 }

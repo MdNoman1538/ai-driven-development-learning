@@ -1,0 +1,27 @@
+---
+import { getCollection } from 'astro:content';
+import Walkthroughs from './Walkthrough';
+import facts from '../generated/sources.json';
+import { codeHref, lineOf, stageNames } from '../lib/teach';
+import { githubLink } from '../lib/links';
+
+interface Props { project: string }
+const { project } = Astro.props;
+const code = (await import(`../generated/code/${project}.json`)).default;
+const repo = (facts as any)[project].repo;
+const names = await stageNames(project);
+const sourceOf = (file: string) => code.files.find((f: any) => f.path === file)?.source ?? '';
+const walkthroughs = (await getCollection('walkthroughs'))
+  .map((e) => e.data)
+  .filter((w) => w.project === project)
+  .sort((a, b) => a.order - b.order)
+  .map((w) => ({
+    ...w,
+    stageName: names[w.stage],
+    steps: w.steps.map((s) => {
+      const file = s.where.split('::')[0];
+      return { ...s, codeHref: codeHref(project, s.where), githubHref: githubLink(repo, file, lineOf(sourceOf(file), s.code)) };
+    }),
+  }));
+---
+<Walkthroughs client:load walkthroughs={walkthroughs} />

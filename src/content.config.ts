@@ -20,7 +20,17 @@ const projects = defineCollection({
     problem: z.string(),
     goal: z.string(),
     learn: z.array(z.string()).min(1),
-    phases: z.array(z.object({ name: z.string(), state: z.enum(['done', 'active', 'next', 'later']), summary: z.string() })),
+    styles: z.array(z.string()).default([]), // architecture style ids (styles.yaml)
+    status_match: z.string().optional(), // text the project's own status line must contain while this is the active phase
+    phases: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        state: z.enum(['done', 'active', 'next', 'later']),
+        summary: z.string(),
+        prepare: z.array(z.string()).default([]), // concept slugs to learn before (or while) building this phase
+      }),
+    ),
   }),
 });
 
@@ -56,6 +66,7 @@ const decisions = defineCollection({
     consequences: z.array(z.string()).min(1),
     revisit: z.string(),
     lesson: z.string(),
+    stage: z.string(),
   }),
 });
 
@@ -74,6 +85,8 @@ const architecture = defineCollection({
   schema: z.object({
     id: z.string(),
     project: projectId,
+    level: z.enum(['context', 'container', 'component', 'target']),
+    order: z.number(),
     label: z.string(),
     description: z.string(),
     groups: z.array(z.object({ id: z.string(), label: z.string() })),
@@ -116,6 +129,147 @@ const steps = defineCollection({
   }),
 });
 
+
+// "file::Qualified.name" or a file path; checked against the generated code facts.
+const codeRef = z.string();
+const use = z.object({ project: projectId, where: codeRef, what: z.string(), why: z.string(), stage: z.string(), status: z.enum(['used', 'planned']).default('used') });
+
+const quality = defineCollection({
+  loader: file('src/data/quality.yaml'),
+  schema: z.object({
+    id: z.string(),
+    project: projectId,
+    attribute: z.string(),
+    why_it_matters: z.string(),
+    scenario: z.object({ stimulus: z.string(), environment: z.string(), response: z.string(), measure: z.string() }),
+    status: z.enum(['met', 'partly', 'planned']),
+    evidence: z.string(),
+    tactics: z.array(z.string()).min(1),
+    stage: z.string(),
+  }),
+});
+
+const styles = defineCollection({
+  loader: file('src/data/styles.yaml'),
+  schema: z.object({
+    id: z.string(),
+    name: z.string(),
+    what: z.string(),
+    when: z.string(),
+    strengths: z.array(z.string()),
+    weaknesses: z.array(z.string()),
+    uses: z.array(z.object({ project: projectId, where: z.string(), how: z.string() })),
+  }),
+});
+
+const patterns = defineCollection({
+  loader: file('src/data/patterns.yaml'),
+  schema: z.object({
+    id: z.string(),
+    name: z.string(),
+    aka: z.string().optional(),
+    category: z.enum(['creational', 'structural', 'behavioural', 'concurrency', 'data', 'reliability', 'integration', 'security', 'ui', 'testing', 'architecture']),
+    problem: z.string(),
+    solution: z.string(),
+    uses: z.array(use).min(1),
+    tradeoff: z.string(),
+    when_not: z.string(),
+  }),
+});
+
+const tradeoffs = defineCollection({
+  loader: file('src/data/tradeoffs.yaml'),
+  schema: z.object({
+    id: z.string(),
+    project: projectId,
+    stage: z.string(),
+    question: z.string(),
+    chose: z.string(),
+    over: z.array(z.object({ option: z.string(), why_not: z.string() })).min(1),
+    because: z.array(z.string()).min(1),
+    cost: z.string(),
+    where: z.array(codeRef).default([]),
+    evidence: z.string().optional(),
+  }),
+});
+
+const algorithms = defineCollection({
+  loader: file('src/data/algorithms.yaml'),
+  schema: z.object({
+    id: z.string(),
+    name: z.string(),
+    category: z.enum(['data structure', 'search', 'geometry', 'hashing', 'statistics', 'machine learning', 'graph', 'layout', 'text', 'signal processing', 'parsing']),
+    problem: z.string(),
+    intuition: z.string(),
+    formula: z.string().optional(),
+    symbols: z.array(z.object({ symbol: z.string(), meaning: z.string() })).default([]),
+    complexity: z.string(),
+    tradeoffs: z.string(),
+    alternatives: z.array(z.object({ name: z.string(), why_not: z.string() })).default([]),
+    uses: z.array(use).min(1),
+    playground: z.string().optional(),
+  }),
+});
+
+const walkthroughs = defineCollection({
+  loader: file('src/data/walkthroughs.yaml'),
+  schema: z.object({
+    id: z.string(),
+    project: projectId,
+    order: z.number(),
+    stage: z.string(),
+    title: z.string(),
+    question: z.string(),
+    summary: z.string(),
+    steps: z
+      .array(
+        z.object({
+          title: z.string(),
+          where: codeRef,
+          code: z.string(), // must appear verbatim (whitespace-normalised) in the file: checked by the coverage step
+          explain: z.string(),
+          params: z.array(z.object({ name: z.string(), value: z.string(), why: z.string() })).default([]),
+          choice: z.string().optional(), // "why this, not that" in one or two sentences
+        }),
+      )
+      .min(2),
+  }),
+});
+
+const api = defineCollection({
+  loader: file('src/data/api.yaml'),
+  schema: z.object({
+    id: z.string(),
+    project: projectId,
+    method: z.string(),
+    path: z.string(),
+    handler: codeRef,
+    purpose: z.string(),
+    params: z.array(z.object({ name: z.string(), in: z.enum(['query', 'body', 'path', 'header']), type: z.string(), rule: z.string(), why: z.string() })).default([]),
+    responses: z.array(z.object({ status: z.string(), when: z.string() })).min(1),
+    notes: z.string().optional(),
+  }),
+});
+
+const competencies = defineCollection({
+  loader: file('src/data/competencies.yaml'),
+  schema: z.object({
+    id: z.string(),
+    order: z.number(),
+    name: z.string(),
+    why: z.string(),
+    topics: z.array(
+      z.object({
+        name: z.string(),
+        what: z.string(),
+        status: z.enum(['strong', 'partial', 'gap']),
+        evidence: z.array(z.string()).default([]), // refs: concept:slug, decision:id, pattern:id, tradeoff:id, algorithm:id, quality:id, walkthrough:id, style:id
+        gap: z.string().optional(),
+      }),
+    ),
+  }),
+});
+
 export const collections = {
   docs: defineCollection({
     loader: docsLoader(),
@@ -125,7 +279,13 @@ export const collections = {
         record: z.object({ project: z.string(), kind: z.string(), source: z.string().url(), commit: z.string() }).optional(),
         // Set on concept pages: shown in the concept library.
         concept: z
-          .object({ summary: z.string(), projects: z.array(projectId).min(1), level: z.enum(['foundation', 'core', 'advanced']) })
+          .object({
+            summary: z.string(),
+            projects: z.array(projectId).min(1),
+            level: z.enum(['foundation', 'core', 'advanced']),
+            // How each project uses this idea, and at which stage: shown inside that project only.
+            uses: z.record(z.string(), z.object({ how: z.string(), stage: z.string() })).default({}),
+          })
           .optional(),
       }),
     }),
@@ -138,4 +298,12 @@ export const collections = {
   journey,
   glossary,
   steps,
+  quality,
+  styles,
+  patterns,
+  tradeoffs,
+  algorithms,
+  walkthroughs,
+  api,
+  competencies,
 };

@@ -1,0 +1,30 @@
+---
+import { getCollection } from 'astro:content';
+import { md } from '../lib/text';
+import { PROJECT_NAMES } from '../lib/site';
+interface Props { project?: string }
+const { project } = Astro.props;
+const proj = project ? (await getCollection('projects')).find((p) => p.data.id === project)!.data : null;
+const styles = (await getCollection('styles')).map((e) => e.data)
+  .filter((s) => !proj || proj.styles.includes(s.id))
+  .map((s) => ({ ...s, uses: project ? s.uses.filter((u) => u.project === project) : s.uses }));
+---
+<div class={project ? 'not-content lx-styles lx-styles--compact' : 'not-content lx-styles'}>
+  {styles.map((s) => {
+    const seen = new Set<string>();
+    return (
+      <article class="lx-card" id={s.id}>
+        <h3>{s.name}</h3>
+        <p set:html={md(s.what, seen)} />
+        {!project && <p class="lx-muted"><strong>Use when:</strong> <span set:html={md(s.when, seen)} /></p>}
+        {!project && (
+          <div class="lx-twocol">
+            <ul class="lx-pros">{s.strengths.map((x) => <li set:html={md(x, seen)} />)}</ul>
+            <ul class="lx-cons">{s.weaknesses.map((x) => <li set:html={md(x, seen)} />)}</ul>
+          </div>
+        )}
+        <ul class="lx-uses">{s.uses.map((u) => <li>{!project && <span class={`lx-pill lx-pill--${u.project}`}>{PROJECT_NAMES[u.project]}</span>} <code>{u.where}</code> <span set:html={md(u.how, seen)} /></li>)}</ul>
+      </article>
+    );
+  })}
+</div>

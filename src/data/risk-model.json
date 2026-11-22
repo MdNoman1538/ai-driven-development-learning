@@ -1,0 +1,27 @@
+{
+  "$comment": "The Road Risk scoring constants used by the Risk Score Playground. The coverage check verifies every `source` fragment appears in the engine's code, so the playground can't teach a formula the engine doesn't use.",
+  "file": "src/scoring/risk_engine.py",
+  "half_life_years": 5,
+  "distance_floor": 0.05,
+  "score_scale": 25,
+  "area_reference_m": 250,
+  "area_floor": 0.25,
+  "severity_weights": { "Kuolemaan johtanut": 10, "Vakavaan loukkaantumiseen johtanut": 5, "Loukkaantumiseen johtanut": 3, "Ei henkilövahinkoja": 1 },
+  "severity_labels": { "Kuolemaan johtanut": "Fatal", "Vakavaan loukkaantumiseen johtanut": "Severe injury", "Loukkaantumiseen johtanut": "Injury", "Ei henkilövahinkoja": "No injuries" },
+  "tiers": [[75, "CRITICAL"], [50, "HIGH"], [25, "MODERATE"], [0, "LOW"]],
+  "source": [
+    "half_life_years: float = Field(default=5.0, gt=0.0)",
+    "decay_lambda = math.log(2.0) / query.half_life_years",
+    "w_dist = max(0.05, 1.0 - (dist_m / query.radius_m))",
+    "area_scale = (query.radius_m / 250.0) ** 2",
+    "density_adjusted = decayed_index / max(0.25, area_scale)",
+    "normalized_score = round(100.0 * (1.0 - math.exp(-density_adjusted / 25.0)), 1)",
+    "\"Kuolemaan johtanut\": 10.0,",
+    "\"Vakavaan loukkaantumiseen johtanut\": 5.0,",
+    "\"Loukkaantumiseen johtanut\": 3.0,",
+    "\"Ei henkilövahinkoja\": 1.0,",
+    "if score >= 75.0:",
+    "if score >= 50.0:",
+    "if score >= 25.0:"
+  ]
+}

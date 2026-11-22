@@ -1,0 +1,235 @@
+# Algorithms and data-science techniques, used now or planned. Formulas use plain notation.
+
+- id: exponential-decay
+  name: Exponential time decay (half-life)
+  category: statistics
+  problem: An old crash says less about today's road than a recent one (roads get rebuilt, traffic changes).
+  intuition: Like radioactive decay, a crash's influence halves every fixed number of years. It never quite reaches zero, but fades smoothly.
+  formula: "w_time = e^(−λ · age),  λ = ln 2 / half_life"
+  symbols:
+    - { symbol: "age", meaning: "years between the crash and the reference year (the newest year in the data)" }
+    - { symbol: "half_life", meaning: "5 years: after 5 years a crash counts half, after 10 years a quarter" }
+    - { symbol: "λ (lambda)", meaning: "the decay rate, chosen so the weight halves every half_life" }
+  complexity: "O(1) per crash."
+  tradeoffs: "Smooth and simple; the half-life is a judgement call, not learned from data. Phase 2 replaces hand-set weights with a statistical model."
+  alternatives:
+    - { name: "A fixed window (last N years only)", why_not: "A crash on Dec 31 counts fully, on Jan 1 not at all: a cliff." }
+    - { name: "Linear decay", why_not: "Reaches zero at a hard cut-off, the same cliff problem." }
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point", what: "decay_lambda = math.log(2.0) / query.half_life_years", why: "Recent crashes matter more, without a cliff.", stage: p0 }
+  playground: risk-score
+
+- id: distance-weighting
+  name: Distance weighting with a floor
+  category: geometry
+  problem: A crash 10 m away says more about this spot than one 240 m away.
+  intuition: Weight falls in a straight line from 1 at the centre to the edge of the circle, but never below 0.05, so distant crashes still count a little.
+  formula: "w_dist = max(0.05, 1 − distance / radius)"
+  symbols:
+    - { symbol: "distance", meaning: "metres from the query point (in EPSG:3067, so plain metres)" }
+    - { symbol: "radius", meaning: "the search radius, 250 m by default" }
+  complexity: "O(1) per crash."
+  tradeoffs: "Simple and explainable; the shape (linear) and the floor (0.05) are judgement calls."
+  alternatives:
+    - { name: "Gaussian (bell-shaped) kernel", why_not: "Smoother, but harder to explain; no clear benefit at this stage." }
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point", what: "w_dist = max(0.05, 1.0 - (dist_m / query.radius_m))", why: "Nearer crashes count more.", stage: p0 }
+  playground: risk-score
+
+- id: saturating-score
+  name: Area-normalised, saturating score
+  category: statistics
+  problem: The sum of weights is unbounded and grows with the size of the circle, but users need a stable 0–100 number.
+  intuition: First divide by the circle's area (relative to 250 m) so big circles don't win just by being big; then squash with a curve that rises quickly and flattens near 100.
+  formula: "score = 100 · (1 − e^(−density / 25)),  density = Σ weights / max(0.25, (radius/250)²)"
+  symbols:
+    - { symbol: "Σ weights", meaning: "sum over crashes of severity × time × distance weights" }
+    - { symbol: "(radius/250)²", meaning: "how many 250 m circles of area this circle holds" }
+    - { symbol: "25", meaning: "the density at which the score reaches about 63" }
+  complexity: "O(1) after the sum."
+  tradeoffs: "Bounded and monotonic; not calibrated (a score of 60 doesn't mean a measured probability). Calibrated risk arrives in Phases 2 and 4."
+  alternatives:
+    - { name: "Percentile rank among all locations", why_not: "Needs the full distribution at query time and shifts when data changes." }
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point", what: "normalized_score = round(100.0 * (1.0 - math.exp(-density_adjusted / 25.0)), 1)", why: "A stable, bounded score for any radius.", stage: p0 }
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.classify_tier", what: "LOW < 25 ≤ MODERATE < 50 ≤ HIGH < 75 ≤ CRITICAL", why: "Thresholds turn a number into an action word.", stage: p0 }
+  playground: risk-score
+
+- id: top-k-heap
+  name: Top-k selection with a heap
+  category: data structure
+  problem: Return the 15 highest-weighted of thousands of crashes.
+  intuition: Keep a small "leaderboard" of the best 15 seen so far; each new item only has to beat the worst on the board.
+  complexity: "O(n log k) with k = 15, instead of O(n log n) for sorting everything."
+  tradeoffs: "Faster and uses less memory; Python's nlargest also keeps ties in the same order as a stable sort."
+  alternatives:
+    - { name: "Sort everything, take 15", why_not: "Does work on items that will be thrown away." }
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point", what: "heapq.nlargest(15, scored, key=lambda s: s[0])", why: "Only the 15 winners become objects.", stage: p0 }
+
+- id: rtree
+  name: R-tree spatial index
+  category: data structure
+  problem: Find crashes within 250 m without checking all 180,734.
+  intuition: Group nearby points into boxes, boxes into bigger boxes. A search only opens boxes that overlap the circle.
+  complexity: "About O(log n + m) to find m matches, instead of O(n) for a full scan."
+  tradeoffs: "Index built once at ingestion; slows inserts slightly (irrelevant for a read-only database)."
+  alternatives:
+    - { name: "Full scan", why_not: "Checks every row for every question." }
+    - { name: "KD-tree in memory", why_not: "Very fast (measured 0.004 ms) but needs everything in memory; that's the car-side design." }
+  uses:
+    - { project: road-risk, where: "src/ingestion/ingest_all.py::build_database", what: "CREATE INDEX … USING RTREE (geom_3067)", why: "Radius queries use the index (confirmed with EXPLAIN).", stage: p0 }
+
+- id: grid-hashing
+  name: Grid hashing (spatial bucketing)
+  category: hashing
+  problem: Look up risk for a GPS position in microseconds.
+  intuition: Divide the map into 250 m squares. A position's square is just integer division; the risk for that square is one dictionary lookup.
+  formula: "cell = (⌊x / 250⌋, ⌊y / 250⌋)"
+  complexity: "O(1) per lookup."
+  tradeoffs: "Squares don't follow roads (two parallel roads share a cell); the real tiles will be road segments."
+  alternatives:
+    - { name: "Road-segment tiles", why_not: "The planned design (Phase 1+); the grid was the proof of speed." }
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point", what: "Prototype measured 0.29 µs vs 24.7 ms for the query (devlog 2026-11-22).", why: "Proved the precompute-then-look-up architecture.", stage: p1, status: planned }
+
+- id: map-projection
+  name: Map projection (WGS84 → ETRS-TM35FIN)
+  category: geometry
+  problem: GPS gives degrees; distance maths needs metres.
+  intuition: Unroll the curved earth onto a flat grid that's accurate for Finland, so distances become simple subtraction.
+  complexity: "O(1) per point."
+  tradeoffs: "Accurate within Finland; a different country needs a different projection."
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point", what: "ST_Transform(…, 'EPSG:4326', 'EPSG:3067', always_xy := true)", why: "Distances in metres; always_xy keeps longitude first, as GPS gives it.", stage: p0 }
+
+- id: sha256
+  name: Cryptographic hashing (SHA-256)
+  category: hashing
+  problem: Prove a file or a table is exactly the expected one.
+  intuition: A fingerprint computed from every byte; change one bit and the fingerprint is completely different.
+  complexity: "O(size of the data)."
+  tradeoffs: "Proves identity, not quality: a wrong file pinned on purpose still passes."
+  uses:
+    - { project: road-risk, where: "src/core/dataset.py::fetch", what: "The downloaded database must match the pinned SHA-256.", why: "Corrupt or tampered downloads fail loudly.", stage: p0 }
+    - { project: road-risk, where: "src/ingestion/ingest_all.py::table_fingerprint", what: "Hash of a table's rows in a fixed order.", why: "Proves two builds produced identical content.", stage: p0 }
+    - { project: project-viewer, where: "src/projectviewer/cache.py::Cache.key", what: "Hash of version + path + content as the cache key.", why: "Same content → same key, anywhere.", stage: p1 }
+
+- id: ast-parsing
+  name: Parsing into abstract syntax trees
+  category: parsing
+  problem: Understand code's structure (functions, calls, imports) without running it.
+  intuition: A parser turns text into a tree, the way a sentence is broken into subject, verb and object.
+  complexity: "O(size of the file)."
+  tradeoffs: "Exact structure, but no runtime knowledge: dynamic calls can't always be resolved."
+  uses:
+    - { project: project-viewer, where: "src/projectviewer/analyzers/python/extract.py::extract", what: "Python's ast module, one file at a time.", why: "Pure per-file facts, cacheable and parallel.", stage: p1 }
+    - { project: learning-app, where: "scripts/read_python.py", what: "The same idea in this site's code reader.", why: "Signatures, parameters and calls for the code reference.", stage: L2 }
+
+- id: symbol-resolution
+  name: Symbol resolution and simple type inference
+  category: parsing
+  problem: Know which function a call like `cart.total()` refers to.
+  intuition: Follow Python's own lookup rules (local, enclosing, module, imports) and track simple types such as `x = Cart()`.
+  complexity: "Roughly linear in the number of calls, with small bounded recursion."
+  tradeoffs: "Some calls stay unresolved; they're counted, never guessed (ADR-0002)."
+  uses:
+    - { project: project-viewer, where: "src/projectviewer/analyzers/python/resolve.py::Resolver.resolve_chain", what: "Resolves a callee chain to a definition with a certainty.", why: "Honest links on the map.", stage: p1 }
+
+- id: bfs-impact
+  name: Breadth-first search for change impact
+  category: graph
+  problem: Which code is affected by a change?
+  intuition: Start from the changed functions and walk outwards one step at a time along "calls" links, like ripples, up to 4 steps.
+  complexity: "O(V + E) for the visited part of the graph."
+  tradeoffs: "The 4-step limit keeps the result meaningful but can miss long chains."
+  uses:
+    - { project: project-viewer, where: "src/projectviewer/changes.py::diff_worlds", what: "Upstream and downstream impact, max_hops = 4.", why: "Shows the orange 'affected' area.", stage: p3 }
+
+- id: squarified-treemap
+  name: Squarified treemap layout
+  category: layout
+  problem: Fit blocks of different sizes into a rectangle so each is easy to see and compare.
+  intuition: Fill rows with blocks, choosing each row so the blocks stay as close to squares as possible.
+  complexity: "O(n log n) (sorting by size)."
+  tradeoffs: "Good aspect ratios; positions shift as sizes change, so history needs stable ordering."
+  uses:
+    - { project: project-viewer, where: "viewer/src/layout.js::layoutLevel", what: "d3-hierarchy's squarified treemap lays out the blocks of one level.", why: "No hand-made layout per project.", stage: p2 }
+
+- id: text-similarity
+  name: Text similarity for move detection
+  category: text
+  problem: Detect a file moved without git (plain mv).
+  intuition: Compare the old and new contents; if at least 60% matches, it's the same file in a new place.
+  complexity: "Roughly quadratic in file length in the worst case (Python's difflib)."
+  tradeoffs: "Heavily edited moves fall below the threshold."
+  uses:
+    - { project: project-viewer, where: "src/projectviewer/changes.py::plain_moves", what: "difflib similarity ≥ 0.6 (MOVE_SIMILARITY).", why: "Moves show as moves, not remove + add.", stage: p3 }
+
+- id: empirical-bayes
+  name: Empirical Bayes (shrinkage)
+  category: statistics
+  problem: Most places have 0–2 crashes in 12 years, so one unlucky crash makes a quiet road look deadly.
+  intuition: Blend each place's own rate with the average of similar places, trusting the place more when it has more data.
+  formula: "EB estimate = w · predicted + (1 − w) · observed,  w = 1 / (1 + predicted / φ)"
+  symbols:
+    - { symbol: "predicted", meaning: "expected crashes for a similar road with this traffic (from a regression model)" }
+    - { symbol: "observed", meaning: "this place's actual crash count" }
+    - { symbol: "φ (phi)", meaning: "overdispersion from the negative binomial model: how much places really differ" }
+  complexity: "O(1) per segment after fitting the model."
+  tradeoffs: "Needs a good model of 'similar places', which needs traffic data (Phase 1)."
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point", what: "Replaces the hand-set weights with statistically sound risk per segment.", why: "Fair risk from sparse data.", stage: p2, status: planned }
+
+- id: negative-binomial
+  name: Poisson and negative binomial regression
+  category: statistics
+  problem: Predict how many crashes a road 'should' have, given its traffic and type.
+  intuition: Crashes are counts of rare events (Poisson); real roads vary more than Poisson allows, so the negative binomial adds an extra spread parameter.
+  complexity: "Iterative fitting; fast for millions of rows."
+  tradeoffs: "Interpretable and standard in road safety (safety performance functions); less flexible than ML."
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point", what: "The baseline for Empirical Bayes.", why: "Risk relative to exposure.", stage: p2, status: planned }
+
+- id: gradient-boosting
+  name: Gradient-boosted trees with calibration
+  category: machine learning
+  problem: Risk depends on combinations of conditions (dark × icy × curve × speed limit).
+  intuition: Many small decision trees, each correcting the mistakes of the previous ones; calibration then makes "0.3" really mean 30%.
+  complexity: "Training O(n · trees · depth); prediction microseconds."
+  tradeoffs: "Strong on tabular data; needs careful validation to avoid learning recording artefacts."
+  alternatives:
+    - { name: "Neural networks", why_not: "Rarely better on tabular data; harder to calibrate and explain." }
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point", what: "The conditional risk model, exported to ONNX for the car.", why: "Condition-aware, calibrated risk.", stage: p4, status: planned }
+
+- id: kalman-filter
+  name: Kalman filter
+  category: signal processing
+  problem: GPS jumps around by several metres; the car needs a smooth, reliable position and speed.
+  intuition: Predict where the car should be from its last position and speed, then blend the prediction with the new GPS reading, trusting whichever is more reliable.
+  complexity: "O(1) per update."
+  tradeoffs: "Assumes smooth motion; needs tuning for sudden stops and tunnels."
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point", what: "Filters GPS before map-matching.", why: "Stable position → correct road segment.", stage: p5, status: planned }
+
+- id: hmm-map-matching
+  name: Map-matching with a Hidden Markov Model
+  category: graph
+  problem: Which road is the car (or a crash) actually on, when GPS points fall between roads?
+  intuition: Consider several candidate roads for each point; prefer sequences that are close to the points and that a car could actually drive between.
+  complexity: "Viterbi algorithm, O(points × candidates²)."
+  tradeoffs: "Accurate for tracks; single points (crashes) use only the distance part."
+  uses:
+    - { project: road-risk, where: "src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point", what: "Assigns crashes and GPS to road segments.", why: "Risk belongs to a road, not a circle.", stage: p1, status: planned }
+
+- id: label-wrap-geometry
+  name: Line–box intersection and label wrapping
+  category: geometry
+  problem: Arrows in a diagram should stop at the edge of a box, and long labels should fit.
+  intuition: Scale the line from a box's centre until it hits the box's edge; break a label at the space nearest its middle.
+  complexity: "O(1) per edge; O(label length) per label."
+  tradeoffs: "Works for rectangles on a grid; curved routing would need a layout engine."
+  uses:
+    - { project: learning-app, where: "src/components/ArchitectureExplorer.tsx::exitPoint", what: "Where an arrow leaves a box.", why: "Clean diagrams without a heavy graph library.", stage: L1 }
+    - { project: learning-app, where: "src/components/ArchitectureExplorer.tsx::lines", what: "Two-line labels.", why: "Readable boxes.", stage: L2 }

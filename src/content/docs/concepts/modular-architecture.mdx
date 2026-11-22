@@ -4,6 +4,13 @@ description: "One job per module, dependencies pointing one way, and tests that 
 concept:
   summary: "One job per module, dependencies pointing one way, and tests that enforce the structure."
   projects: [road-risk, project-viewer]
+  uses:
+    road-risk:
+      how: One-job modules (core, ingestion, scoring, i18n, api, ui) with one-way dependencies (ADR-0006).
+      stage: p0
+    project-viewer:
+      how: Shows any project's modules as blocks, which made Road Risk's misleading structure visible.
+      stage: p2
   level: core
 ---
 

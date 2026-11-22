@@ -4,6 +4,13 @@ description: "Unit, integration, characterization and snapshot tests, and why a 
 concept:
   summary: "Unit, integration, characterization and snapshot tests, and why a bug fix starts with a failing test."
   projects: [road-risk, project-viewer]
+  uses:
+    road-risk:
+      how: Test-first bug fixes, characterization tests (Oulu 95 / 57.8), synthetic CSVs for every cleaning rule, byte-identical snapshots.
+      stage: p0
+    project-viewer:
+      how: Small made-up fixture projects test the analyser; pure viewer logic tested with node --test.
+      stage: p1
   level: foundation
 ---
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Inline from './Inline';
+import Inline, { AcronymScope } from './Inline';
 
 type Tool = {
   id: string;
@@ -58,7 +58,8 @@ export default function StackMap({
           const uses = t.used_in.filter((u) => project === 'all' || u.project === project);
           const versions = t.versions.filter((v) => project === 'all' || v.project === project);
           return (
-            <article key={t.id} className={isOpen ? 'lx-tool lx-tool--open' : 'lx-tool'}>
+            <AcronymScope key={t.id}>
+            <article className={isOpen ? 'lx-tool lx-tool--open' : 'lx-tool'}>
               <button className="lx-tool__head" onClick={() => setOpen(isOpen ? null : t.id)} aria-expanded={isOpen}>
                 <span className={`lx-layer lx-layer--${t.layer}`}>{layers[t.layer]}</span>
                 <strong className="lx-tool__name">{t.name}</strong>
@@ -93,6 +94,7 @@ export default function StackMap({
                 </div>
               )}
             </article>
+            </AcronymScope>
           );
         })}
       </div>

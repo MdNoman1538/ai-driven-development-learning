@@ -1,0 +1,61 @@
+---
+import { getCollection, getEntry } from 'astro:content';
+import { href } from '../lib/site';
+interface Props { project: string }
+const { project } = Astro.props;
+const p = (await getEntry('projects', project))!.data;
+const concepts = await getCollection('docs', (e) => !!e.data.concept);
+const conceptTitle = new Map(concepts.map((c) => [c.id.replace(/^concepts\//, ''), c.data.title]));
+const byStage = (stage: string) => ({
+  concepts: concepts.filter((c) => c.data.concept!.uses?.[project as 'road-risk']?.stage === stage).map((c) => ({ title: c.data.title, href: href(c.id) })),
+  walkthroughs: [] as { title: string; href: string }[],
+  decisions: [] as { title: string; href: string }[],
+  tradeoffs: [] as { title: string; href: string }[],
+  patterns: [] as { title: string; href: string }[],
+  algorithms: [] as { title: string; href: string }[],
+});
+const stages = Object.fromEntries(p.phases.map((ph) => [ph.id, byStage(ph.id)]));
+for (const { data: w } of await getCollection('walkthroughs')) if (w.project === project) stages[w.stage]?.walkthroughs.push({ title: w.title, href: href(`${project}/walkthroughs#${w.id}`) });
+for (const { data: d } of await getCollection('decisions')) if (d.project === project) stages[d.stage]?.decisions.push({ title: `${d.ref}: ${d.title}`, href: href(`${project}/decisions#${d.id}`) });
+for (const { data: t } of await getCollection('tradeoffs')) if (t.project === project) stages[t.stage]?.tradeoffs.push({ title: t.question, href: href(`${project}/tradeoffs#${t.id}`) });
+for (const { data: pt } of await getCollection('patterns')) for (const u of pt.uses) if (u.project === project && !stages[u.stage]?.patterns.some((x) => x.title === pt.name)) stages[u.stage]?.patterns.push({ title: pt.name, href: href(`${project}/patterns#${pt.id}`) });
+for (const { data: a } of await getCollection('algorithms')) for (const u of a.uses) if (u.project === project && !stages[u.stage]?.algorithms.some((x) => x.title === a.name)) stages[u.stage]?.algorithms.push({ title: a.name + (u.status === 'planned' ? ' (planned)' : ''), href: href(`${project}/algorithms#${a.id}`) });
+const LABEL: Record<string, string> = { done: 'Done', active: 'Now', next: 'Next', later: 'Later' };
+const groups = [['concepts', 'Concepts'], ['walkthroughs', 'Walkthroughs'], ['decisions', 'Decisions'], ['tradeoffs', 'Trade-offs'], ['patterns', 'Patterns'], ['algorithms', 'Algorithms & data science']] as const;
+---
+<ol class="lx-path not-content">
+  {p.phases.map((ph) => {
+    const s = stages[ph.id];
+    const total = groups.reduce((n, [k]) => n + s[k].length, 0);
+    return (
+      <li class={`lx-path__stage lx-path__stage--${ph.state}`} id={`stage-${ph.id}`}>
+        <div class="lx-path__marker" aria-hidden="true" />
+        <div class="lx-path__body">
+          <header>
+            <span class={`lx-state lx-state--${ph.state}`}>{LABEL[ph.state]}</span>
+            <h3>{ph.name}</h3>
+          </header>
+          <p class="lx-muted">{ph.summary}</p>
+          {(ph.state === 'next' || ph.state === 'active') && ph.prepare.length > 0 && (
+            <div class="lx-prepare">
+              <strong>{ph.state === 'next' ? 'Prepare for this stage:' : 'Know these for this stage:'}</strong>{' '}
+              {ph.prepare.map((c) => <a class="lx-chip" href={href(`concepts/${c}`)}>{conceptTitle.get(c) ?? c}</a>)}
+            </div>
+          )}
+          {total > 0 ? (
+            <details class="lx-path__content" open={ph.state === 'active'}>
+              <summary>What you learn in this stage ({total})</summary>
+              <div class="lx-path__groups">
+                {groups.filter(([k]) => s[k].length > 0).map(([k, label]) => (
+                  <div><h4>{label}</h4><ul>{s[k].map((x) => <li><a href={x.href}>{x.title}</a></li>)}</ul></div>
+                ))}
+              </div>
+            </details>
+          ) : (
+            ph.state === 'later' && <p class="lx-muted lx-path__empty">Learning material arrives when this stage starts.</p>
+          )}
+        </div>
+      </li>
+    );
+  })}
+</ol>

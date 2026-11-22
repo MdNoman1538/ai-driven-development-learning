@@ -1,0 +1,79 @@
+# Architecture styles: the overall shape of a system. Each lists where our projects use it.
+- id: modular-monolith
+  name: Modular monolith
+  what: >-
+    One deployable application, divided inside into modules with clear jobs and one-way
+    dependencies. Everything runs in one process and shares one codebase.
+  when: Small teams and young products where simplicity matters more than independent scaling.
+  strengths: [Simple to build, test, deploy and debug, Refactoring across modules is one PR, No network calls between parts]
+  weaknesses: [All parts scale together, One bad deploy affects everything, Module boundaries need discipline (or tests) to survive]
+  uses:
+    - { project: road-risk, where: "src/ (core, ingestion, scoring, i18n, api, ui)", how: "One codebase; modules with one job each; dependencies enforced one way (ADR-0006)." }
+
+- id: layered-dependencies
+  name: Layered dependencies (the dependency rule)
+  what: >-
+    Code is arranged so that dependencies only point "inwards" or "downwards": delivery code
+    (API, UI) depends on domain logic, which depends on infrastructure, never the reverse.
+  when: Almost always. It's the backbone of maintainable code, whatever the overall style.
+  strengths: [Changing the UI can't break the domain, Domain logic is testable without a web server, Clear place for each piece of code]
+  weaknesses: [Some indirection, Easy to violate silently without automated checks]
+  uses:
+    - { project: road-risk, where: "src/api, src/ui → src/scoring → src/core, src/i18n", how: "api and ui use scoring; scoring uses core and i18n; nothing imports api or ui." }
+
+- id: pipeline
+  name: Pipeline (pipes and filters)
+  what: >-
+    Data flows through a sequence of steps; each step does one transformation and hands its
+    output to the next.
+  when: Batch data processing, compilers, analysers, build systems.
+  strengths: [Each step is simple and testable alone, Steps can be reordered or replaced, Natural place for validation and quarantine]
+  weaknesses: [Hard to share state between steps, Errors late in the pipeline waste earlier work]
+  uses:
+    - { project: road-risk, where: src/ingestion/ingest_all.py, how: "read as text → clean → validate/quarantine → load → index → fingerprint → atomic swap." }
+    - { project: project-viewer, where: analyzers/python/, how: "discover → extract (pass 1) → link (pass 2) → world → changes." }
+    - { project: learning-app, where: scripts/, how: "sync → read code → coverage check → schema validation → build → deploy." }
+
+- id: microkernel
+  name: Microkernel (plugin architecture)
+  what: >-
+    A small core defines a contract; plugins provide specific capabilities behind it. The core
+    doesn't know the details of any plugin.
+  when: "Tools that must support many variants: languages, file formats, providers."
+  strengths: [New variants without touching the core, Plugins can be tested and shipped separately]
+  weaknesses: [The contract is hard to change later, More upfront design]
+  uses:
+    - { project: project-viewer, where: "analyzers/python/ + the project-world/1 format", how: "The world format (ADR-0002) is the contract; the Python analyser is the first plugin. A TypeScript analyser would be another." }
+
+- id: client-server-local
+  name: Local client–server
+  what: >-
+    A server process and a browser client, both on the user's own machine. The server binds to
+    127.0.0.1 so nothing is reachable from outside.
+  when: Developer tools that need a rich UI but must keep data private.
+  strengths: [Rich browser UI without a cloud, Private by construction]
+  weaknesses: [The user has to run a process, No sharing between machines]
+  uses:
+    - { project: project-viewer, where: src/projectviewer/server.py, how: "ThreadingHTTPServer on 127.0.0.1:8765 serves the viewer and its JSON API." }
+
+- id: cloud-edge-split
+  name: Cloud/edge split (precompute and look up)
+  what: >-
+    Heavy work happens centrally and ahead of time; devices at the edge (here, cars) receive small
+    precomputed results and only look them up, offline.
+  when: Devices with limited compute, unreliable connectivity, or strict response-time needs.
+  strengths: [Microsecond responses at the edge, Works offline, Edge software stays small and certifiable]
+  weaknesses: [Results go stale between updates, Needs an update channel (over-the-air)]
+  uses:
+    - { project: road-risk, where: "Target architecture (Phases 1–8)", how: "DuckDB builds risk tiles in the cloud; the car looks them up in memory (ADR-0003)." }
+
+- id: static-site-islands
+  name: Static site with islands
+  what: >-
+    Pages are pre-built HTML; a few interactive components ("islands") load JavaScript and come
+    alive in the browser. Nothing runs on a server per visit.
+  when: "Content-heavy sites: documentation, learning, marketing, blogs."
+  strengths: [Very fast and robust, Free hosting, Accessible by default]
+  weaknesses: [No server-side features (accounts, shared data) without adding services]
+  uses:
+    - { project: learning-app, where: "astro.config.mjs, src/components/*.tsx", how: "Astro builds HTML; React islands for the explorers (ADR-0001)." }

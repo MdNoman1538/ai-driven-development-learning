@@ -4,6 +4,16 @@ description: "How every change is recorded, reviewed and merged, and why the mer
 concept:
   summary: "How every change is recorded, reviewed and merged, and why the merge method matters."
   projects: [road-risk, project-viewer, learning-app]
+  uses:
+    road-risk:
+      how: Every change since Phase 0 through branches and PRs; stacked PRs merged in order; main protected.
+      stage: p0
+    project-viewer:
+      how: 'Merge commits keep each commit''s Changes: notes, which the viewer shows on the code.'
+      stage: p3
+    learning-app:
+      how: Same workflow; the only direct commit to main was the scaffold.
+      stage: L0
   level: foundation
 ---
 

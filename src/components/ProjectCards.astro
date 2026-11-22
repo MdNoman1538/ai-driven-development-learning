@@ -6,15 +6,20 @@ import { href } from '../lib/site';
 const projects = (await getCollection('projects')).map((e) => e.data).sort((a, b) => a.order - b.order);
 const decisions = (await getCollection('decisions')).map((e) => e.data);
 const tools = (await getCollection('tools')).map((e) => e.data);
+const walkthroughs = (await getCollection('walkthroughs')).map((e) => e.data);
+const patterns = (await getCollection('patterns')).map((e) => e.data);
 const stats = (id: string) => {
   const f = (facts as any)[id];
   return [
     [decisions.filter((d) => d.project === id).length, 'decisions'],
-    [tools.filter((t) => t.used_in.some((u) => u.project === id)).length, 'tools'],
-    [f?.commits ?? 0, 'commits'],
+    [walkthroughs.filter((w) => w.project === id).length, 'walkthroughs'],
+    [patterns.filter((p) => p.uses.some((u) => u.project === id)).length, 'patterns'],
     [f?.mergedPullRequests ?? 0, 'merged PRs'],
   ];
 };
+const phase = (p: any) => p.phases.find((ph: any) => ph.state === 'active');
+const areas = (await getCollection('competencies')).length;
+const concepts = (await getCollection('docs', (e) => !!e.data.concept)).length;
 ---
 <div class="lx-projects not-content">
   {projects.map((p) => (
@@ -27,8 +32,21 @@ const stats = (id: string) => {
           <div><dt>{n}</dt><dd>{label}</dd></div>
         ))}
       </dl>
-      <span class="lx-project__status">{p.status}</span>
-      <span class="lx-project__go">Explore →</span>
+      <span class="lx-project__status">Now: {phase(p)?.name ?? p.status}</span>
+      <span class="lx-project__go">Open project →</span>
     </a>
   ))}
+  <a class="lx-project lx-project--knowledge" href={href('knowledge')}>
+    <span class="lx-project__kind">Across all projects</span>
+    <h3>Combined knowledge</h3>
+    <p>The architect's competency map, styles, design patterns, trade-offs, algorithms, {concepts} concepts and the glossary, all linked back to real code.</p>
+    <dl class="lx-project__stats">
+      <div><dt>{areas}</dt><dd>areas</dd></div>
+      <div><dt>{patterns.length}</dt><dd>patterns</dd></div>
+      <div><dt>{concepts}</dt><dd>concepts</dd></div>
+      <div><dt>{(await getCollection('algorithms')).length}</dt><dd>algorithms</dd></div>
+    </dl>
+    <span class="lx-project__status">Shared by every project</span>
+    <span class="lx-project__go">Open →</span>
+  </a>
 </div>

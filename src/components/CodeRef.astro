@@ -1,0 +1,9 @@
+---
+import CodeReference from './CodeReference';
+import { href } from '../lib/site';
+import { taughtIndex } from '../lib/teach';
+interface Props { project: string }
+const { project } = Astro.props;
+const taught = await taughtIndex(project);
+---
+<CodeReference client:load project={project} dataUrl={href(`code-data/${project}.json`).replace(/\/$/, '')} taught={taught} />

@@ -207,9 +207,10 @@
     - { name: "MkDocs", why_not: "Simplest, but hard to make interactive and good-looking." }
     - { name: "Docusaurus", why_not: "Mature, but every page ships React; plainer design." }
     - { name: "Next.js", why_not: "A full web-app framework that needs a server or paid hosting; more than content needs." }
-  packages: [astro, "@astrojs/starlight"]
+  packages: [astro, "@astrojs/starlight", "@astrojs/markdown-remark"]
   used_in:
     - { project: learning-app, where: "astro.config.mjs, src/content/, src/content.config.ts", how: "The whole site: pages, sidebar, search (Pagefind), schemas" }
+    - { project: learning-app, where: "astro.config.mjs (markdown.rehypePlugins)", how: "@astrojs/markdown-remark runs build-time plugins such as the acronym expander; Astro 7's default Markdown processor no longer does" }
 
 - id: sharp
   name: sharp

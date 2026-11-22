@@ -1,0 +1,34 @@
+---
+import { getCollection } from 'astro:content';
+import { md } from '../lib/text';
+import { codeHref, stageNames } from '../lib/teach';
+import { PROJECT_NAMES } from '../lib/site';
+interface Props { project?: string }
+const { project } = Astro.props;
+const items = (await getCollection('tradeoffs')).map((e) => e.data).filter((t) => !project || t.project === project);
+const names: Record<string, Record<string, string>> = {};
+for (const t of items) names[t.project] ??= await stageNames(t.project);
+---
+<div class="not-content">
+  {items.map((t) => {
+    const seen = new Set<string>();
+    return (
+      <article class="lx-card lx-trade" id={t.id}>
+        <p class="lx-crumb">{!project && <span class={`lx-pill lx-pill--${t.project}`}>{PROJECT_NAMES[t.project]}</span>} {names[t.project][t.stage]}</p>
+        <h3 set:html={md(t.question, seen)} />
+        <div class="lx-trade__grid">
+          <div class="lx-trade__chose"><span class="lx-label">Chose</span><p set:html={md(t.chose, seen)} /></div>
+          <div class="lx-trade__over">
+            <span class="lx-label">Over</span>
+            <ul>{t.over.map((o) => <li><strong set:html={md(o.option, seen)} />: <span set:html={md(o.why_not, seen)} /></li>)}</ul>
+          </div>
+        </div>
+        <h4>Because</h4>
+        <ul>{t.because.map((b) => <li set:html={md(b, seen)} />)}</ul>
+        <p class="lx-cost"><strong>The cost we accepted:</strong> <span set:html={md(t.cost, seen)} /></p>
+        {t.where.length > 0 && <p class="lx-muted">In the code: {t.where.map((w) => <a href={codeHref(t.project, w)}><code>{w}</code></a>)}</p>}
+        {t.evidence && <p class="lx-muted">Evidence: <span set:html={md(t.evidence, seen)} /></p>}
+      </article>
+    );
+  })}
+</div>

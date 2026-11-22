@@ -36,6 +36,7 @@
     - "LLM evals measure faithfulness: an explanation must never contradict the risk engine."
   revisit: Only if on-device LLMs become fast and verifiable *and* a safety argument exists; even then they would add features, not replace the model.
   lesson: Match the tool to the job's real requirements (latency, determinism, testability), not to what's exciting.
+  stage: p0
 
 - id: rr-0002
   project: road-risk
@@ -70,6 +71,7 @@
     - Risk in the dark must be divided by the share of traffic in the dark (Phase 2).
   revisit: If hour-level crash data becomes available, add it alongside lighting (for example for rush-hour effects).
   lesson: When the data lacks the variable you wanted, ask what that variable was standing in for. The real cause may already be there.
+  stage: p0
 
 - id: rr-0003
   project: road-risk
@@ -106,6 +108,7 @@
     - "A demo later measured a precomputed grid lookup at 0.29 µs vs 24.7 ms for the query: about 85,000× faster."
   revisit: If the model needs inputs that can't be bucketed in advance; even then only a small model runs live, never a query.
   lesson: Performance usually comes from *when and where* work happens, not from tuning one query. Measure first, then change the architecture.
+  stage: p0
 
 - id: rr-0004
   project: road-risk
@@ -144,6 +147,7 @@
     - "Honest gap: the ADR says squash merges, but the project actually used merge commits (following projectViewer's ADR-0007). A superseding ADR should record that."
   revisit: When more maintainers join, add required approvals and CODEOWNERS.
   lesson: A workflow is a safety system. Choose the lightest one that still makes skipping verification impossible.
+  stage: p0
 
 - id: rr-0005
   project: road-risk
@@ -175,6 +179,7 @@
     - "In practice the reviewer found real bugs: 8 findings in PR #6, 9 in PR #8, all fixed test-first."
   revisit: After Phase 6 (evals) and Phase 7 (LoRA), and only if a tuned model measurably approaches the strong reviewer.
   lesson: Before training a model, build the test that would tell you whether it's any good.
+  stage: p0
 
 - id: rr-0006
   project: road-risk
@@ -206,6 +211,7 @@
     - "Paths are computed from `__file__` and guarded by tests: a wrong `parents[n]` silently points at the wrong folder."
   revisit: If a module grows past one job, split it rather than adding sub-layers.
   lesson: Structure is communication. If the map of your code misleads you, fix the structure, not the documentation.
+  stage: p0
 
 - id: rr-0007
   project: road-risk
@@ -242,6 +248,7 @@
     - The release must exist before CI runs, or the fetch fails with 404.
   revisit: When data versions grow to hundreds of MB, need access control, or must reach cars; then object storage behind the same lock interface.
   lesson: Treat data like dependencies. Pin it, version it, verify it.
+  stage: p0
 
 - id: rr-0008
   project: road-risk
@@ -278,6 +285,7 @@
     - "Two builds from the same files give identical content fingerprints."
   revisit: If the source publishes globally unique IDs, or data starts arriving as a stream.
   lesson: Investigate before you clean. "Duplicates" and "outliers" are often real events your assumptions don't cover.
+  stage: p0
 
 # ===================== projectViewer =====================
 - id: pv-0001
@@ -314,6 +322,7 @@
     - Prompts are stored locally only.
   revisit: If teams need shared history (a server, authentication and a privacy review).
   lesson: Record facts deterministically, and use AI only to interpret recorded facts, never to produce them.
+  stage: p4
 
 - id: pv-0002
   project: project-viewer
@@ -345,6 +354,7 @@
     - "A '% linked' metric needed care: calls to builtins and libraries aren't misses."
   revisit: If the unresolved rate stays high on real projects; then consider a precise indexer (SCIP, pyright).
   lesson: A tool should tell you how sure it is. Calibrated uncertainty beats false confidence.
+  stage: p1
 
 - id: pv-0003
   project: project-viewer
@@ -376,6 +386,7 @@
     - Pass 1 must stay pure; anything cross-file belongs to pass 2.
   revisit: When the warm path (re-reading every cache entry) dominates; then keep facts in memory in the service.
   lesson: Make expensive work a pure function of its input, then cache by a hash of that input.
+  stage: p1
 
 - id: pv-0004
   project: project-viewer
@@ -406,6 +417,7 @@
     - The only commit made directly on main is the initial scaffold.
   revisit: When more maintainers join (required approvals, CODEOWNERS).
   lesson: Make the slow, careful step the one that sets the pace.
+  stage: p1
 
 - id: pv-0005
   project: project-viewer
@@ -435,6 +447,7 @@
     - "After using it, the owner found it cluttered, which led to ADR-0006."
   revisit: Superseded when real use showed the clutter.
   lesson: A design can be reasonable on paper and still fail in use. Ship, watch, and let feedback supersede it, recorded as a new decision.
+  stage: p2
 
 - id: pv-0006
   project: project-viewer
@@ -462,6 +475,7 @@
     - "The map is only as good as the project's folder structure, which makes a messy structure visible (it led to Road Risk's ADR-0006)."
   revisit: If projects with very deep or flat structures need another view.
   lesson: Design for how many things a person can actually compare at once.
+  stage: p2
 
 - id: pv-0007
   project: project-viewer
@@ -492,6 +506,7 @@
     - "Both projects merge with merge commits; `git log --first-parent main` gives one line per PR."
   revisit: If the history becomes too noisy for the team.
   lesson: When a new practice (change notes) appears, re-check older decisions it depends on, and supersede them explicitly.
+  stage: p3
 
 # ===================== Learning app =====================
 - id: la-0001
@@ -529,6 +544,7 @@
     - Quiz progress (Phase L3) is stored in the visitor's browser.
   revisit: If the site needs accounts, shared progress or server-side features.
   lesson: Choose the least powerful tool that does the job well. Power you don't need is maintenance you pay for.
+  stage: L0
 
 - id: la-0002
   project: learning-app
@@ -559,6 +575,7 @@
     - "Every imported page says where it came from and at which commit."
   revisit: If the teaching layer starts to repeat the records instead of explaining them.
   lesson: Separate evidence from interpretation, and link one to the other.
+  stage: L0
 
 - id: la-0003
   project: learning-app
@@ -585,6 +602,7 @@
     - The sync reads each project's main branch; what's merged is what's taught.
   revisit: If the check blocks too often for trivial packages; then allow an explicit "not explained" list.
   lesson: If a rule matters, make breaking it fail a build.
+  stage: L1
 
 - id: la-0004
   project: learning-app
@@ -610,6 +628,7 @@
     - Only public repositories are synced, from their main branch.
   revisit: When new kinds of sensitive data appear in records.
   lesson: Put privacy checks where data crosses a boundary, and make them fail loudly.
+  stage: L1
 
 - id: la-0005
   project: learning-app
@@ -640,3 +659,95 @@
     - Picks are saved in the visitor's browser only.
   revisit: When quizzes (L3) arrive; picks can then feed spaced repetition.
   lesson: To learn judgement, practise making the judgement, then check it.
+  stage: L1
+
+- id: la-0006
+  project: learning-app
+  ref: ADR-0006
+  title: Scoped projects and a separate Combined knowledge area
+  date: "2026-11-22"
+  status: Accepted
+  question: "Version 1 showed every project in one sidebar. The owner found it confusing. How should a multi-project learning site be navigated?"
+  context: "Inside a project the learner wants only that project; shared knowledge (concepts, patterns, glossary) spans all projects."
+  options:
+    - name: One sidebar for everything
+      summary: Keep version 1's structure.
+      pros: [Simple]
+      cons: [No sense of place, Projects blur together]
+    - name: Separate sites per project
+      summary: One site each.
+      pros: [Clean separation]
+      cons: [Shared knowledge duplicated, Cross-links break]
+    - name: One site, scoped navigation, plus Combined knowledge
+      summary: Each project area shows only its own sidebar; shared material lives in one combined area.
+      pros: [Focus inside a project, One home for shared knowledge, Defined once, filtered per page]
+      cons: [Needs route middleware]
+  chosen: 2
+  why:
+    - "Progressive disclosure: show the learner one project at a time."
+    - The full sidebar is defined once; middleware filters it per page, so nothing can drift.
+  consequences:
+    - Concepts live once; each project shows how it uses them.
+    - Acronyms are spelled out automatically from one list.
+  revisit: If the site grows to many projects; then add search and filters to the home page.
+  lesson: Structure is part of the user experience. Show people only what belongs to where they are.
+  stage: L2
+
+- id: la-0007
+  project: learning-app
+  ref: ADR-0007
+  title: Code-level teaching, read from the code and verified against it
+  date: "2026-11-22"
+  status: Accepted
+  question: How do you teach a codebase down to functions and parameters without the explanations going stale?
+  context: Hand-written code explanations go out of date with the first refactor.
+  options:
+    - name: Write code explanations by hand
+      summary: Describe functions and snippets manually.
+      pros: [Flexible]
+      cons: [Stale within weeks]
+    - name: Reuse projectViewer's analyser
+      summary: Import its world format.
+      pros: [Already extracts the facts]
+      cons: [Couples the site to another tool, Can't read TypeScript yet]
+    - name: Own small readers, plus verification
+      summary: Read the code with each language's own parser; check every reference and snippet at build time.
+      pros: [Always current or failing, No dependency on another tool, Reads this site's TypeScript too]
+      cons: [Simpler call resolution]
+  chosen: 2
+  why:
+    - "The build checks every code reference and every quoted snippet, so a walkthrough can't silently lie."
+    - Only certain calls are recorded; nothing is guessed.
+  consequences:
+    - "A refactor in a project fails this site's build until the teaching is updated; it caught two stale items during this very change."
+  revisit: If call resolution needs to be much richer; then consider reusing projectViewer's analyser as a library.
+  lesson: Documentation that can be checked should be checked, like code.
+  stage: L2
+
+- id: la-0008
+  project: learning-app
+  ref: ADR-0008
+  title: Learning aligned with each project's development stages
+  date: "2026-11-22"
+  status: Accepted
+  question: Should the site teach a fixed curriculum, or grow with each project's stages?
+  context: Learning everything up front is overwhelming; learning after the fact doesn't stick.
+  options:
+    - name: A fixed curriculum
+      summary: Teach everything independently of the projects.
+      pros: [Complete]
+      cons: [Disconnected from what is being built]
+    - name: Stage-tagged content and a learning path per project
+      summary: Each item belongs to a stage; the current stage is open and the next one says what to prepare.
+      pros: [Just-in-time learning, Grows with the projects]
+      cons: [Every item needs a stage tag]
+  chosen: 1
+  why:
+    - "You learn what the current stage needs, while it's being built."
+    - The build fails if a project's own status moves past the stage marked active here.
+  consequences:
+    - "Finishing a stage in a project includes updating its learning content."
+  revisit: When quizzes and katas arrive; they'll use the same stage tags.
+  lesson: Teach the idea when it's needed, then keep it alive by connecting it to real work.
+  stage: L2
+

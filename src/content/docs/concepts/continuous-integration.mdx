@@ -4,6 +4,16 @@ description: "Running the checks on a clean machine for every change, so 'it wor
 concept:
   summary: "Running the checks on a clean machine for every change, so 'it works on my machine' is never the proof."
   projects: [road-risk, project-viewer, learning-app]
+  uses:
+    road-risk:
+      how: Lint, lockfile checks and 117 tests run against the pinned database release on every PR.
+      stage: p0
+    project-viewer:
+      how: Lint, tests and a separate viewer build job.
+      stage: p1
+    learning-app:
+      how: Coverage check, type check and build on every PR; deploy on merge.
+      stage: L0
   level: foundation
 ---
 

@@ -1,0 +1,36 @@
+---
+import { getCollection } from 'astro:content';
+import { md } from '../lib/text';
+import { stageNames } from '../lib/teach';
+interface Props { project: string }
+const { project } = Astro.props;
+const items = (await getCollection('quality')).map((e) => e.data).filter((q) => q.project === project);
+const names = await stageNames(project);
+const STATUS: Record<string, string> = { met: 'Met', partly: 'Partly met', planned: 'Planned' };
+---
+<div class="not-content">
+  <div class="lx-qsum">
+    {(['met', 'partly', 'planned'] as const).map((s) => <div class={`lx-qsum__item lx-q--${s}`}><strong>{items.filter((q) => q.status === s).length}</strong><span>{STATUS[s]}</span></div>)}
+  </div>
+  {items.map((q) => {
+    const seen = new Set<string>();
+    return (
+      <article class="lx-card lx-quality" id={q.id}>
+        <header class="lx-algo__head">
+          <h3>{q.attribute}</h3>
+          <span class={`lx-badge lx-q--${q.status}`}>{STATUS[q.status]}</span>
+          <span class="lx-muted">{names[q.stage]}</span>
+        </header>
+        <p set:html={md(q.why_it_matters, seen)} />
+        <div class="lx-scenario" aria-label="Quality attribute scenario">
+          <div><span class="lx-label">When</span><p set:html={md(q.scenario.stimulus, seen)} /></div>
+          <div><span class="lx-label">In</span><p set:html={md(q.scenario.environment, seen)} /></div>
+          <div><span class="lx-label">The system</span><p set:html={md(q.scenario.response, seen)} /></div>
+          <div class="lx-scenario__measure"><span class="lx-label">Measured as</span><p set:html={md(q.scenario.measure, seen)} /></div>
+        </div>
+        <p><strong>Evidence today:</strong> <span set:html={md(q.evidence, seen)} /></p>
+        <p class="lx-muted"><strong>Tactics:</strong> {q.tactics.join(' · ')}</p>
+      </article>
+    );
+  })}
+</div>

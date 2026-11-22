@@ -1,0 +1,70 @@
+---
+import { getCollection } from 'astro:content';
+import { md } from '../lib/text';
+import { codeHref, stageNames } from '../lib/teach';
+import { PROJECT_NAMES } from '../lib/site';
+import RiskPlayground from './RiskPlayground';
+interface Props { project?: string }
+const { project } = Astro.props;
+const items = (await getCollection('algorithms')).map((e) => e.data)
+  .map((a) => ({ ...a, uses: project ? a.uses.filter((u) => u.project === project) : a.uses }))
+  .filter((a) => a.uses.length > 0)
+  .sort((a, b) => Number(a.uses.every((u) => u.status === 'planned')) - Number(b.uses.every((u) => u.status === 'planned')));
+const names: Record<string, Record<string, string>> = {};
+for (const a of items) for (const u of a.uses) names[u.project] ??= await stageNames(u.project);
+const showPlayground = items.some((a) => a.playground === 'risk-score');
+---
+<div class="not-content">
+  {showPlayground && (
+    <section class="lx-card lx-card--feature" id="playground">
+      <h2 class="lx-h2">Risk Score Playground</h2>
+      <p class="lx-muted">Road Risk's scoring formulas, live. Move a slider and see each weight and the final score change.</p>
+      <RiskPlayground client:visible />
+    </section>
+  )}
+  {items.map((a) => {
+    const seen = new Set<string>();
+    const planned = a.uses.every((u) => u.status === 'planned');
+    return (
+      <article class="lx-card lx-algo" id={a.id}>
+        <header class="lx-algo__head">
+          <h3>{a.name}</h3>
+          <span class="lx-badge">{a.category}</span>
+          {planned && <span class="lx-badge lx-badge--planned">planned</span>}
+        </header>
+        <div class="lx-twocol">
+          <div><h4>The problem</h4><p set:html={md(a.problem, seen)} /></div>
+          <div><h4>The idea</h4><p set:html={md(a.intuition, seen)} /></div>
+        </div>
+        {a.formula && (
+          <div class="lx-formula">
+            <code>{a.formula}</code>
+            {a.symbols.length > 0 && <dl>{a.symbols.map((s) => <><dt><code>{s.symbol}</code></dt><dd set:html={md(s.meaning, seen)} /></>)}</dl>}
+          </div>
+        )}
+        <div class="lx-twocol lx-twocol--quiet">
+          <p><strong>Cost:</strong> <span set:html={md(a.complexity, seen)} /></p>
+          <p><strong>Trade-offs:</strong> <span set:html={md(a.tradeoffs, seen)} /></p>
+        </div>
+        <h4>Where</h4>
+        <ul class="lx-uses">
+          {a.uses.map((u) => (
+            <li>
+              {!project && <span class={`lx-pill lx-pill--${u.project}`}>{PROJECT_NAMES[u.project]}</span>}
+              <span class="lx-badge">{u.status === 'planned' ? `planned · ${names[u.project][u.stage]}` : names[u.project][u.stage]}</span>
+              <a href={codeHref(u.project, u.where)}><code>{u.where}</code></a>
+              <p set:html={md(u.what, seen)} />
+              <p class="lx-muted"><strong>Why:</strong> <span set:html={md(u.why, seen)} /></p>
+            </li>
+          ))}
+        </ul>
+        {a.alternatives.length > 0 && (
+          <details class="lx-more"><summary>Alternatives that weren't used</summary>
+            <ul>{a.alternatives.map((x) => <li><strong>{x.name}</strong>: <span set:html={md(x.why_not, seen)} /></li>)}</ul>
+          </details>
+        )}
+        {a.playground && <p><a href="#playground">Try it in the playground ↑</a></p>}
+      </article>
+    );
+  })}
+</div>

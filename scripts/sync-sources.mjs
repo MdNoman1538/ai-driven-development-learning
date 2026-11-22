@@ -20,7 +20,8 @@ const FACTS = join(ROOT, 'src', 'generated', 'sources.json');
 // The site is public. Nothing private may pass through it (ADR-0004).
 const FORBIDDEN = [
   [/\/Users\/[^/\s)`'"]+/g, 'a local home-directory path'],
-  [/(?<![\w.`])[\w.%+-]+@(?!anthropic\.com\b)[\w-]+(\.[\w-]+)*\.[a-z]{2,}\b/gi, 'an email address'],
+  // example.com/.org/.net are reserved for documentation (RFC 2606), so they can't belong to anyone.
+  [/(?<![\w.`])[\w.%+-]+@(?!anthropic\.com\b|example\.(?:com|org|net)\b)[\w-]+(\.[\w-]+)*\.[a-z]{2,}\b/gi, 'an email address'],
 ];
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -151,6 +152,35 @@ function history(repoDir) {
   };
 }
 
+// Code facts (modules, classes, functions, parameters, calls, endpoints) for the code reference,
+// walkthroughs and the build's snippet checks. Python is read with Python's own parser.
+function readCode(source, repoDir) {
+  const out = join(ROOT, 'src', 'generated', 'code', `${source.id}.json`);
+  if (source.code === 'python') execFileSync('python3', [join(ROOT, 'scripts', 'read_python.py'), repoDir, out], { stdio: 'inherit' });
+  else if (source.code === 'typescript') execFileSync('node', [join(ROOT, 'scripts', 'read-typescript.mjs'), repoDir, out], { stdio: 'inherit' });
+  const facts = JSON.parse(readFileSync(out, 'utf8'));
+  // Extra parts in another language (e.g. projectViewer's JavaScript viewer), merged with a path prefix.
+  for (const extra of source.extraCode ?? []) {
+    const tmp = join(ROOT, '.cache', `${source.id}-${extra.dir}.json`);
+    execFileSync('node', [join(ROOT, 'scripts', 'read-typescript.mjs'), join(repoDir, extra.dir), tmp], { stdio: 'inherit' });
+    const more = JSON.parse(readFileSync(tmp, 'utf8'));
+    const pre = (id) => `${extra.dir}/${id}`;
+    for (const f of more.files) facts.files.push({ ...f, path: pre(f.path) });
+    for (const s of more.symbols)
+      facts.symbols.push({ ...s, id: pre(s.id), file: pre(s.file), calls: s.calls.map(pre), called_by: s.called_by.map(pre) });
+    writeFileSync(out, JSON.stringify(facts, null, 1) + '\n');
+  }
+  for (const f of facts.files) guard(f.source, `${source.id}:${f.path}`);
+}
+
+/** The project's own "current phase" line, so the site can tell when a project has moved on. */
+function statusLine(repoDir) {
+  const p = join(repoDir, 'docs', 'project-status.md');
+  if (!existsSync(p)) return null;
+  const line = readFileSync(p, 'utf8').split('\n').find((l) => /\*\*(Current phase|Phase):\*\*/.test(l));
+  return line ? line.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/\*\*/g, '').trim() : null;
+}
+
 const config = JSON.parse(readFileSync(join(ROOT, 'sources.config.json'), 'utf8'));
 const facts = {};
 for (const source of config.sources) {
@@ -163,6 +193,7 @@ for (const source of config.sources) {
       const meta = importRecord(source, repoDir, fileRel, commit);
       records[meta.kind].push(meta);
     }
+  readCode(source, repoDir);
   const py = pythonDeps(repoDir, source.python);
   facts[source.id] = {
     repo: source.repo,
@@ -171,6 +202,7 @@ for (const source of config.sources) {
     python: py.requires,
     dependencies: [...py.deps.map((d) => ({ ...d, ecosystem: 'python' })), ...nodeDeps(repoDir, source.node).map((d) => ({ ...d, ecosystem: 'node' }))],
     workflows: workflows(repoDir, source.workflows),
+    status: statusLine(repoDir),
     records,
   };
   const n = records.decisions.length + records.devlog.length + records.overview.length;

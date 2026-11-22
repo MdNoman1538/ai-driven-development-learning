@@ -1,0 +1,227 @@
+# "Why this, not that": the medium-sized choices between big decisions (ADRs) and single parameters.
+
+# ---------------- Road Risk ----------------
+- id: rr-memory-vs-db
+  project: road-risk
+  stage: p0
+  question: In the car, should risk be looked up in memory, or queried from the database each time?
+  chose: Precomputed risk tiles held in memory
+  over:
+    - { option: "Query DuckDB live on every GPS update", why_not: "≈25 ms per lookup at 250 m, more at larger radii; a database engine on the device; cost grows with how many crashes are nearby." }
+    - { option: "A faster database (PostGIS, SpatiaLite)", why_not: "Still computes on demand something that only changes once a year." }
+  because:
+    - "Measured: a grid lookup in memory took 0.29 µs against 24.7 ms for the query, about 85,000× faster."
+    - "The whole prototype map was 0.9 MB, small enough for any car computer."
+    - "A lookup costs the same every time, which matters for a safety function with a time budget."
+  cost: "Tiles go stale between rebuilds (crash data changes yearly anyway); a tile format and update channel are needed (Phase 8)."
+  where: ["src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point"]
+  evidence: "ADR-0003; tiles prototype benchmark, 2026-11-22."
+
+- id: rr-persistent-connection
+  project: road-risk
+  stage: p0
+  question: Open a database connection per request, or keep one open?
+  chose: One persistent connection, one cursor per request
+  over:
+    - { option: "A new connection per request", why_not: "≈56 ms of every 78 ms lookup was opening the connection and loading the spatial extension." }
+    - { option: "One connection shared by all threads", why_not: "A DuckDB connection must not be used by several threads at once; FastAPI runs requests in a thread pool." }
+  because: ["78 → 15 ms per lookup.", "Cursors are cheap and safe to use per thread."]
+  cost: "The connection must be created safely under concurrency (double-checked locking) and closed on shutdown."
+  where: ["src/scoring/risk_engine.py::SpatialRiskEngine._connection", "src/scoring/risk_engine.py::SpatialRiskEngine.cursor"]
+
+- id: rr-null-vs-unknown
+  project: road-risk
+  stage: p0
+  question: How should "no value" be stored?
+  chose: "NULL in the database; labelled 'Not recorded' only when shown"
+  over:
+    - { option: "One canonical string such as 'Unknown'", why_not: "SQL, GROUP BY and ML encoders treat it as a real category." }
+    - { option: "Keep the source's spellings", why_not: "8 spellings split one fact into many buckets; Helsinki under-reported missing data (602 vs 623)." }
+  because: ["Every tool understands NULL as 'no value'.", "Presentation (language, wording) stays out of the data."]
+  cost: "Every display path must handle NULL (the translators do)."
+  where: ["src/ingestion/clean.py::text", "src/i18n/translator.py::translate_surface"]
+
+- id: rr-text-first
+  project: road-risk
+  stage: p0
+  question: Let the CSV reader guess column types, or read everything as text?
+  chose: Read every column as text, then convert deliberately
+  over:
+    - { option: "Automatic type detection", why_not: "One side of a join might become a number (0123 → 123) while the other stays text, and they no longer match." }
+  because: ["Conversions are explicit, in one place, with known rules.", "Participant files (read by pandas as text) and crash files now agree."]
+  cost: "Every column needs an explicit conversion rule."
+  where: ["src/ingestion/ingest_all.py::_ingest_accident_file"]
+
+- id: rr-composite-key
+  project: road-risk
+  stage: p0
+  question: How do you identify a crash when the source reuses IDs across years?
+  chose: "Composite key (year, accident_id)"
+  over:
+    - { option: "Drop the 'duplicate'", why_not: "It was a different, fatal crash." }
+    - { option: "A synthetic id like '2019-9710903'", why_not: "Hides the source id; every lookup needs translating." }
+  because: ["Both parts are source values, traceable to the raw files.", "Participants carry their file's year, so joins are exact."]
+  cost: "Every join must use both columns (the cyclist filter didn't, which was a bug)."
+  where: ["src/ingestion/ingest_all.py::_ingest_participant_file"]
+
+- id: rr-top-k
+  project: road-risk
+  stage: p0
+  question: To return the 15 most important crashes out of 4,659, sort them all, or select the top 15?
+  chose: "heapq.nlargest(15, …)"
+  over:
+    - { option: "sorted(…, reverse=True)[:15]", why_not: "Sorts all n items (n log n) to keep 15; also built 4,659 objects first." }
+  because: ["Top-k with a heap is n log k; and only the 15 winners become objects.", "Python guarantees the same result as the sort, including ties."]
+  cost: "A less familiar function for readers."
+  where: ["src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point"]
+  evidence: "Output byte-identical before and after (snapshot of 5 queries)."
+
+- id: rr-error-id
+  project: road-risk
+  stage: p0
+  question: What should a client see when something breaks inside the API?
+  chose: "Only 'Internal server error' and a short error id; details in the server log"
+  over:
+    - { option: "The exception text", why_not: "Leaked the database's full file path; can reveal SQL and versions." }
+  because: ["Operators can still find the full traceback by id.", "Attackers learn nothing about the internals."]
+  cost: "Developers calling the API must look in the log for details."
+  where: ["src/api/main.py::unhandled_error"]
+
+- id: rr-release-vs-git
+  project: road-risk
+  stage: p0
+  question: Where should the 38 MB database live?
+  chose: A versioned GitHub Release, pinned by a lock file
+  over:
+    - { option: "In git", why_not: "Every rebuild adds 38 MB to the history forever." }
+    - { option: "Git LFS", why_not: "Small free quota spent by every CI run and deploy." }
+  because: ["Named, verifiable data versions.", "No new accounts or tools."]
+  cost: "Publishing new data takes an extra step."
+  where: ["src/core/dataset.py::fetch"]
+
+- id: rr-saturating-score
+  project: road-risk
+  stage: p0
+  question: How do you turn an unbounded amount of weighted crashes into a 0–100 score?
+  chose: "A saturating curve: 100 · (1 − e^(−x/25))"
+  over:
+    - { option: "Linear scaling with a cap", why_not: "Everything above the cap looks identical; the cap is arbitrary." }
+    - { option: "Percentile rank", why_not: "Needs the whole distribution at query time; changes when data changes." }
+  because: ["Always between 0 and 100, rises quickly at first and flattens out.", "No lookup table needed."]
+  cost: "The constant 25 is a judgement call, not calibrated. Phases 2/4 replace this with calibrated risk."
+  where: ["src/scoring/risk_engine.py::SpatialRiskEngine.evaluate_point"]
+
+# ---------------- projectViewer ----------------
+- id: pv-stdlib-server
+  project: project-viewer
+  stage: p2
+  question: Build the local server with a web framework (FastAPI), or Python's standard library?
+  chose: The standard library's ThreadingHTTPServer
+  over:
+    - { option: "FastAPI", why_not: "Nicer to write, but adds runtime dependencies to a tool meant to sit next to any project." }
+  because: ["Zero runtime dependencies: installs anywhere, can't break because of someone else's update.", "The API is small (9 routes)."]
+  cost: "Manual routing, headers and JSON handling."
+  where: ["src/projectviewer/server.py::make_server"]
+
+- id: pv-polling-vs-push
+  project: project-viewer
+  stage: p2
+  question: Should the browser poll for changes, or should the server push them?
+  chose: Polling now (cheap thanks to fingerprints and ETags); push later
+  over:
+    - { option: "Server-Sent Events now", why_not: "More moving parts before the background service exists (Phase 4)." }
+  because: ["A poll with nothing changed costs a fingerprint and a 304.", "Simple to build and debug first."]
+  cost: "Up to one polling interval of delay; some wasted requests."
+  where: ["src/projectviewer/server.py::Project.fingerprint"]
+
+- id: pv-function-count
+  project: project-viewer
+  stage: p2
+  question: How should block size on the map be measured?
+  chose: Number of functions
+  over:
+    - { option: "Lines of code", why_not: "Counts blank lines, comments and long SQL strings, not behaviour." }
+  because: ["Functions measure how much a module *does*.", "Matches the owner's mental model of 'big'."]
+  cost: "A module with one huge function looks small (lines are used when every block has one function)."
+  where: ["viewer/src/tree.js::buildTree"]
+
+- id: pv-impact-hops
+  project: project-viewer
+  stage: p3
+  question: How far should "affected by this change" reach?
+  chose: Up to 4 steps through the call graph
+  over:
+    - { option: "Direct callers only", why_not: "Misses the endpoint two steps up that actually breaks." }
+    - { option: "Unlimited", why_not: "In a connected codebase everything is eventually 'affected'; the signal drowns." }
+  because: ["Covers typical chains like endpoint → service → helper → database.", "Keeps the orange area meaningful."]
+  cost: "Very long chains are cut off."
+  where: ["src/projectviewer/changes.py::diff_worlds"]
+
+- id: pv-move-similarity
+  project: project-viewer
+  stage: p3
+  question: When a file disappears and another appears, when is it a move?
+  chose: "When their contents are at least 60% similar"
+  over:
+    - { option: "Only trust git's rename detection", why_not: "Plain `mv` in an editor isn't seen by git until staged." }
+    - { option: "Same file name", why_not: "Moves often rename too; different files can share a name." }
+  because: ["Close to git's own default (50%), a little stricter.", "Catches moves made outside git."]
+  cost: "A heavily edited move can fall below the threshold and show as remove + add."
+  where: ["src/projectviewer/changes.py::plain_moves"]
+
+# ---------------- Learning app ----------------
+- id: la-static-vs-server
+  project: learning-app
+  stage: L0
+  question: A static site, or a web app with a server and database?
+  chose: Static site with React islands
+  over:
+    - { option: "Next.js with a server", why_not: "Needs hosting that runs code; accounts and databases to maintain." }
+  because: ["Free, fast, nothing to go down.", "Content is the product; interactivity only where it teaches."]
+  cost: "No shared progress or accounts; picks live in each browser."
+  where: ["astro.config.mjs"]
+
+- id: la-yaml-content
+  project: learning-app
+  stage: L1
+  question: Where should the teaching content live?
+  chose: "YAML and MDX files in git, validated by schemas"
+  over:
+    - { option: "A headless CMS or database", why_not: "Another service; content changes wouldn't be reviewed in PRs." }
+  because: ["Every change is a reviewable diff.", "Schemas catch mistakes at build time."]
+  cost: "Editing YAML by hand has traps (null, colons), which the schemas catch."
+  where: ["src/content.config.ts"]
+
+- id: la-commit-generated
+  project: learning-app
+  stage: L1
+  question: Fetch the projects' data during each build, or commit the generated files?
+  chose: Commit the generated files; sync is a separate, reviewed step
+  over:
+    - { option: "Fetch during the CI build", why_not: "Builds would depend on the network and change without a reviewable diff." }
+  because: ["Builds are reproducible and offline.", "Every content change shows up in a PR."]
+  cost: "Someone has to run the sync (a scheduled sync is planned)."
+  where: ["scripts/sync-sources.mjs"]
+
+- id: la-own-reader
+  project: learning-app
+  stage: L2
+  question: Read the projects' code with projectViewer, or with the site's own small readers?
+  chose: The site's own readers (Python ast and the TypeScript compiler)
+  over:
+    - { option: "projectViewer's analyser", why_not: "Couples the site to another tool's release cycle; it can't read TypeScript yet." }
+  because: ["No dependency on another project.", "Reads this site's own TypeScript too."]
+  cost: "Simpler call resolution than projectViewer: only certain calls are recorded."
+  where: ["scripts/read_python.py", "scripts/read-typescript.mjs"]
+
+- id: la-verified-snippets
+  project: learning-app
+  stage: L2
+  question: How do you stop code snippets in walkthroughs from going stale?
+  chose: The build checks every snippet appears in the current source
+  over:
+    - { option: "Copy snippets by hand and hope", why_not: "The first refactor makes the walkthrough lie." }
+    - { option: "Show whole files only", why_not: "Accurate, but buries the lesson in noise." }
+  because: ["Focused snippets that are provably current."]
+  cost: "A refactor in a project fails this site's build until the walkthrough is updated, which is the point."
+  where: ["scripts/check-coverage.mjs"]

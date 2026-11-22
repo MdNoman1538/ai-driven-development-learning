@@ -1,201 +1,112 @@
-# Architecture views. Nodes sit on a grid (col, row); edges are drawn between them.
+# Architecture views as C4 levels (Context → Containers → Components), plus planned "target" views.
+# Nodes sit on a grid (col, row); edges are drawn between them.
 
-- id: road-risk-today
+# =============================== Road Risk ===============================
+- id: road-risk-context
   project: road-risk
-  label: Today
-  description: What exists now, after Phase 0. Data flows left to right; dependencies inside the app point one way.
+  level: context
+  order: 1
+  label: "1 · Context"
+  description: "The whole system as one box: who uses it, and which outside systems it depends on."
   groups:
-    - { id: data, label: Data }
-    - { id: app, label: Application }
-    - { id: out, label: Delivery }
+    - { id: people, label: People }
+    - { id: system, label: This system }
+    - { id: external, label: Outside systems }
   nodes:
-    - id: raw
-      label: Raw crash CSVs
-      group: data
-      col: 0
-      row: 1
-      what: "12 yearly files from Väylävirasto (2014–2025) in two formats: 2014–21 and 2022+, three text encodings."
-      why: "The open source of truth. Kept out of git (data/raw/ is ignored) because it's large and anyone can download it."
-      where: data/raw/
-    - id: ingestion
-      label: Ingestion + cleaning
-      group: data
-      col: 1
-      row: 1
-      what: "Reads every file as text, applies the cleaning rules, quarantines unusable rows, logs each file's checksum."
-      why: "Cleaning as code means the database can be rebuilt identically from the raw files (ADR-0008)."
-      where: src/ingestion/ingest_all.py, clean.py
-    - id: duckdb
-      label: DuckDB warehouse
-      group: data
-      col: 2
-      row: 1
-      what: "180,734 crashes and 309,544 participants with an R-tree spatial index; ingest_rejects and ingest_files for auditing."
-      why: "A fast analytics engine inside the program, with no server (ADR-0003)."
-      where: data/processed/road_risk.duckdb
-    - id: release
-      label: Data release
-      group: out
-      col: 2
-      row: 0
-      what: "Each database version is a GitHub Release, pinned by a lock file with its SHA-256."
-      why: "Keeps a 38 MB binary out of git and gives every data version a name (ADR-0007)."
-      where: data/road_risk.lock.json, src/core/dataset.py
-    - id: core
-      label: core
-      group: app
-      col: 3
-      row: 2
-      what: "The only place database connections are opened; installs + loads the spatial extension; project paths."
-      why: "One place for infrastructure fixed the fresh-server bug everywhere at once."
-      where: src/core/
-    - id: scoring
-      label: scoring
-      group: app
-      col: 3
-      row: 1
-      what: "SpatialRiskEngine: crashes within a radius, weighted by severity × recency × distance, → score 0–100 and a tier."
-      why: "The risk logic in one module that the API and the dashboard both use. To be replaced by segment-level risk in Phases 1–2."
-      where: src/scoring/risk_engine.py
-    - id: i18n
-      label: i18n
-      group: app
-      col: 4
-      row: 2
-      what: "Finnish → English labels; NULL reads 'Not recorded' / 'Ei tiedossa'."
-      why: "The data stays in its canonical Finnish values; translation happens only at the output."
-      where: src/i18n/translator.py
-    - id: api
-      label: API
-      group: out
-      col: 4
-      row: 0
-      what: "FastAPI: deep /health, point risk, route risk. Internal errors return only an error id."
-      why: "A machine interface for other systems, and later the cloud side of the product."
-      where: src/api/main.py
-    - id: ui
-      label: Dashboard
-      group: out
-      col: 4
-      row: 1
-      what: "Streamlit + Folium map: pick a municipality, see hotspots, risk metrics and incidents."
-      why: "Exploration and demos. Not the in-car interface."
-      where: src/ui/app.py
-    - id: ci
-      label: Tests + CI
-      group: out
-      col: 1
-      row: 2
-      what: "117 tests; GitHub Actions runs lint, the lockfile check and the tests on every PR; branch protection requires them."
-      why: "Tests are the contract with the AI agent; CI is proof on a clean machine."
-      where: tests/, .github/workflows/ci.yml
+    - { id: analyst, label: Analyst / demo user, group: people, col: 0, row: 0, what: "Explores crash hotspots and risk on the dashboard, or calls the API.", why: "Today's users: the product is still the data foundation for the in-car system.", where: "Browser → Render" }
+    - { id: driver, label: Driver (future), group: people, col: 0, row: 2, what: "Gets a warning 15–20 s before a risky segment.", why: "The real customer. Everything is designed backwards from their needs: offline, fast, few false alarms.", where: "Phase 5 onwards" }
+    - { id: dev, label: Developer + AI agent, group: people, col: 2, row: 2, what: "Builds the system through branches, PRs and CI; the agent follows CLAUDE.md.", why: "How the system changes is part of its architecture: every change is reviewed and tested.", where: "GitHub, CLAUDE.md" }
+    - { id: system, label: Road Risk, group: system, col: 2, row: 1, what: "Turns 12 years of crash data into risk scores for a location or a route.", why: "The thing being designed. Its inside is shown on the next levels.", where: "This repository" }
+    - { id: vayla, label: Väylävirasto open data, group: external, col: 4, row: 0, what: "Yearly crash files from the Finnish Transport Infrastructure Agency.", why: "The only source of crash history; open data, so anyone can rebuild the database.", where: "data/raw/ (downloaded)" }
+    - { id: github, label: GitHub, group: external, col: 4, row: 1, what: "Code, pull requests, CI and the versioned data releases.", why: "Review, automation and data versioning in one place.", where: "github.com" }
+    - { id: render, label: Render, group: external, col: 4, row: 2, what: "Runs the API and the dashboard in the cloud.", why: "Free hosting from the repo; the demo is reachable by anyone.", where: render.yaml }
   edges:
-    - { from: raw, to: ingestion }
-    - { from: ingestion, to: duckdb, label: builds }
-    - { from: duckdb, to: release, label: published as }
-    - { from: duckdb, to: core, label: opened by }
-    - { from: scoring, to: core }
-    - { from: scoring, to: i18n }
+    - { from: analyst, to: system, label: uses }
+    - { from: driver, to: system, label: warned by, style: dashed }
+    - { from: dev, to: system, label: builds }
+    - { from: system, to: vayla, label: reads }
+    - { from: system, to: github, label: "CI, data" }
+    - { from: system, to: render, label: runs on }
+
+- id: road-risk-containers
+  project: road-risk
+  level: container
+  order: 2
+  label: "2 · Containers"
+  description: "The separately running or stored pieces. A batch job builds a database file; two services read it."
+  groups:
+    - { id: data, label: Data (built offline) }
+    - { id: services, label: Running services }
+    - { id: delivery, label: Delivery }
+  nodes:
+    - { id: raw, label: Raw crash CSVs, group: data, col: 0, row: 0, what: "12 yearly files, two formats, three text encodings.", why: "Kept out of git: large and publicly downloadable.", where: data/raw/ }
+    - { id: ingest, label: Ingestion job, group: data, col: 1, row: 0, what: "A batch Python program that cleans the data and builds the database atomically.", why: "Runs only when data changes, never per request, so it can be thorough and slow.", where: "python -m src.ingestion.ingest_all" }
+    - { id: duckdb, label: DuckDB file, group: data, col: 2, row: 0, what: "180,734 crashes with a spatial index, plus reject and file-log tables.", why: "An embedded analytics database: no server to run (ADR-0003).", where: data/processed/road_risk.duckdb }
+    - { id: release, label: Data release, group: delivery, col: 3, row: 0, what: "Each database version as a GitHub Release, pinned by SHA-256.", why: "Versioned, verifiable data without 38 MB binaries in git (ADR-0007).", where: data/road_risk.lock.json }
+    - { id: api, label: API service, group: services, col: 2, row: 1, what: "FastAPI on Uvicorn: health, point risk, route risk.", why: "A machine interface: the future cloud side of the product.", where: src/api/main.py }
+    - { id: ui, label: Dashboard, group: services, col: 3, row: 1, what: "Streamlit + Folium map for exploring hotspots.", why: "Demos and exploration; not the in-car interface.", where: src/ui/app.py }
+    - { id: ci, label: CI pipeline, group: delivery, col: 1, row: 1, what: "GitHub Actions: lint, lockfile checks, 117 tests against the pinned database.", why: "Proof on a clean machine before anything merges.", where: .github/workflows/ci.yml }
+    - { id: client, label: Browser / client, group: services, col: 4, row: 1, what: "Whoever calls the API or opens the dashboard.", why: "The outside world sees only these two services.", where: "—" }
+  edges:
+    - { from: raw, to: ingest }
+    - { from: ingest, to: duckdb, label: builds }
+    - { from: duckdb, to: release, label: published }
+    - { from: release, to: api, label: fetched at build, style: dashed }
+    - { from: api, to: duckdb, label: reads, style: dashed }
+    - { from: ui, to: duckdb, label: reads, style: dashed }
+    - { from: ci, to: release, label: fetches }
+    - { from: client, to: api }
+    - { from: client, to: ui }
+
+- id: road-risk-components
+  project: road-risk
+  level: component
+  order: 3
+  label: "3 · Components"
+  description: "The modules inside the code. Dependencies point one way: api and ui → scoring → core and i18n (ADR-0006)."
+  groups:
+    - { id: entry, label: Entry points }
+    - { id: domain, label: Domain logic }
+    - { id: infra, label: Infrastructure }
+  nodes:
+    - { id: api, label: api, group: entry, col: 0, row: 0, what: "HTTP endpoints, input validation, the app-wide error handler.", why: "Keeps web concerns out of the risk logic.", where: src/api/main.py }
+    - { id: ui, label: ui, group: entry, col: 0, row: 2, what: "The Streamlit dashboard; shares the engine's connection.", why: "A second client of the same engine, so both always agree.", where: src/ui/app.py }
+    - { id: scoring, label: scoring, group: domain, col: 2, row: 1, what: "SpatialRiskEngine: query, weights, score, tier; RiskQuery/RiskProfile models.", why: "All risk logic in one place, reused by every client.", where: src/scoring/risk_engine.py }
+    - { id: i18n, label: i18n, group: domain, col: 4, row: 2, what: "Finnish → English labels; 'Not recorded' for NULL.", why: "Data stays canonical; translation happens only at the output.", where: src/i18n/translator.py }
+    - { id: db, label: core.db, group: infra, col: 4, row: 0, what: "connect_spatial(): the only place a database connection is opened.", why: "Fixing the extension bug here fixed it everywhere at once.", where: src/core/db.py }
+    - { id: paths, label: core.paths, group: infra, col: 4, row: 1, what: "Project paths in one place, standard library only.", why: "Build tools and the app agree on where files live.", where: src/core/paths.py }
+    - { id: dataset, label: core.dataset, group: infra, col: 2, row: 3, what: "Fetches and verifies the pinned database release.", why: "Runs at build time, before any app dependency is installed.", where: src/core/dataset.py }
+    - { id: ingestion, label: ingestion, group: domain, col: 0, row: 3, what: "build_database() and the cleaning rules in clean.py.", why: "One pipeline, rules written once, reproducible output.", where: src/ingestion/ }
+  edges:
     - { from: api, to: scoring }
     - { from: ui, to: scoring }
-    - { from: ci, to: release, label: fetches, style: dashed }
+    - { from: scoring, to: db }
+    - { from: scoring, to: i18n }
+    - { from: db, to: paths }
+    - { from: dataset, to: paths }
+    - { from: ingestion, to: db }
 
 - id: road-risk-target
   project: road-risk
-  label: Target (in the car)
+  level: target
+  order: 4
+  label: "Target (in the car)"
   description: "The planned product. The cloud precomputes; the car looks up, offline. The LLM explains but never sits on the decision path (ADR-0001)."
   groups:
     - { id: cloud, label: Cloud (build & update) }
     - { id: car, label: In the car (offline) }
   nodes:
-    - id: sources
-      label: Source data
-      group: cloud
-      col: 0
-      row: 0
-      what: "Yearly crash data, the road network (Digiroad/OSM), traffic volumes, historical weather (FMI)."
-      why: "Risk needs exposure (traffic) and road geometry, not crashes alone."
-      where: Phases 1–3
-    - id: pipeline
-      label: Data pipeline
-      group: cloud
-      col: 1
-      row: 0
-      what: "raw → clean → ready layers; every crash map-matched to a road segment."
-      why: "Segment-level risk is what the car can look up."
-      where: Phase 1
-    - id: model
-      label: Risk model
-      group: cloud
-      col: 2
-      row: 0
-      what: "Empirical Bayes baseline, then a calibrated gradient-boosted model per segment × condition."
-      why: "Statistically sound, testable risk: never raw counts (ADR-0001)."
-      where: Phases 2 and 4
-    - id: tiles
-      label: Risk tiles
-      group: cloud
-      col: 3
-      row: 0
-      what: "Precomputed risk per road segment × condition, versioned, shipped as delta updates."
-      why: "Microsecond lookups in the car (ADR-0003)."
-      where: Phase 8
-    - id: gps
-      label: GPS + map-matching
-      group: car
-      col: 0
-      row: 2
-      what: "GPS at 1–10 Hz, a Kalman filter, then which road and direction the car is on."
-      why: "Risk belongs to a road in a direction, not to a point on a map."
-      where: Phase 5
-    - id: ahead
-      label: Road ahead (2 km)
-      group: car
-      col: 1
-      row: 2
-      what: "The segments the car will reach in the next 15–20 seconds (an 'electronic horizon')."
-      why: "Warn before the junction, not at it."
-      where: Phase 5
-    - id: context
-      label: Live context
-      group: car
-      col: 1
-      row: 1
-      what: "Sun position (computed locally), road weather (Digitraffic), forecasts, the car's sensors."
-      why: "The same conditions the model was trained on, measured live (no training/serving skew)."
-      where: Phase 3; sun position in Phase 1
-    - id: risk
-      label: Conditional risk
-      group: car
-      col: 2
-      row: 2
-      what: "Tile lookup × current conditions, using a small ONNX model in under 10 ms."
-      why: "Deterministic, calibrated, testable."
-      where: Phases 4–5
-    - id: policy
-      label: Alert policy
-      group: car
-      col: 3
-      row: 2
-      what: "When to alert and when to stay quiet: timing, repeat suppression, cooldown."
-      why: "A warning system that cries wolf gets switched off. Target: under 1 false alarm per 100 km."
-      where: Phase 5
-    - id: driver
-      label: Driver
-      group: car
-      col: 4
-      row: 2
-      what: "A dashboard icon and a chime, in Finnish or English."
-      why: "The only output that matters."
-      where: Phase 5
-    - id: llm
-      label: Small LLM (explains)
-      group: car
-      col: 3
-      row: 3
-      what: "A 4-bit Qwen for 'why?' questions, alert explanations and voice."
-      why: "Language is what LLMs are good at; it never triggers or blocks an alert."
-      where: Phases 6–7
+    - { id: sources, label: Source data, group: cloud, col: 0, row: 0, what: "Crashes, the road network (Digiroad/OSM), traffic volumes, historical weather (FMI).", why: "Risk needs exposure and road geometry, not crashes alone.", where: "Phases 1–3" }
+    - { id: pipeline, label: Data pipeline, group: cloud, col: 1, row: 0, what: "raw → clean → ready layers; every crash map-matched to a road segment.", why: "Segment-level risk is what the car can look up.", where: Phase 1 }
+    - { id: model, label: Risk model, group: cloud, col: 2, row: 0, what: "Empirical Bayes baseline, then a calibrated gradient-boosted model per segment × condition.", why: "Statistically sound, testable risk: never raw counts.", where: "Phases 2 and 4" }
+    - { id: tiles, label: Risk tiles, group: cloud, col: 3, row: 0, what: "Precomputed risk per road segment × condition, versioned, shipped as delta updates.", why: "Microsecond lookups in the car (ADR-0003).", where: Phase 8 }
+    - { id: gps, label: GPS + map-matching, group: car, col: 0, row: 2, what: "GPS at 1–10 Hz, a Kalman filter, then which road and direction the car is on.", why: "Risk belongs to a road in a direction, not to a point.", where: Phase 5 }
+    - { id: ahead, label: Road ahead (2 km), group: car, col: 1, row: 2, what: "The segments the car will reach in the next 15–20 seconds (the 'electronic horizon').", why: "Warn before the junction, not at it.", where: Phase 5 }
+    - { id: context, label: Live context, group: car, col: 1, row: 1, what: "Sun position (computed locally), road weather (Digitraffic), forecasts, the car's sensors.", why: "The same conditions the model was trained on, measured live.", where: "Phases 1 and 3" }
+    - { id: risk, label: Conditional risk, group: car, col: 2, row: 2, what: "Tile lookup × current conditions, using a small ONNX model in under 10 ms.", why: "Deterministic, calibrated, testable.", where: "Phases 4–5" }
+    - { id: policy, label: Alert policy, group: car, col: 3, row: 2, what: "When to alert and when to stay quiet: timing, repeat suppression, cooldown.", why: "A warning system that cries wolf gets switched off.", where: Phase 5 }
+    - { id: driver, label: Driver, group: car, col: 4, row: 2, what: "A dashboard icon and a chime, in Finnish or English.", why: "The only output that matters.", where: Phase 5 }
+    - { id: llm, label: Small LLM (explains), group: car, col: 3, row: 3, what: "A 4-bit Qwen for 'why?' questions and explanations.", why: "Language is what LLMs are good at; it never triggers or blocks an alert.", where: "Phases 6–7" }
   edges:
     - { from: sources, to: pipeline }
     - { from: pipeline, to: model }
@@ -208,178 +119,150 @@
     - { from: policy, to: driver }
     - { from: policy, to: llm, label: explains afterwards, style: dashed }
 
-- id: project-viewer-today
+# =============================== projectViewer ===============================
+- id: project-viewer-context
   project: project-viewer
-  label: Today
-  description: "How a codebase becomes a live map. Everything runs locally on 127.0.0.1; nothing leaves the machine."
+  level: context
+  order: 1
+  label: "1 · Context"
+  description: "A local tool on the developer's own machine. Nothing leaves it."
   groups:
-    - { id: sources, label: Event sources }
+    - { id: people, label: People and agents }
+    - { id: system, label: This system }
+    - { id: external, label: What it reads }
+  nodes:
+    - { id: dev, label: Developer, group: people, col: 0, row: 0, what: "Explores the architecture and the impact of changes in the browser.", why: "The user: wants to *see* code, not read diffs.", where: "Browser on 127.0.0.1:8765" }
+    - { id: agent, label: AI agent (Claude Code), group: people, col: 0, row: 2, what: "Edits code; its hook reports every edit, prompt and stop.", why: "AI work becomes visible live.", where: "~/.claude/settings.json hook" }
+    - { id: system, label: projectViewer, group: system, col: 2, row: 1, what: "Maps code into a 'world', computes change impact, serves the viewer.", why: "The thing being designed.", where: "This repository" }
+    - { id: repos, label: Your git repositories, group: external, col: 4, row: 1, what: "Any subscribed project: files, history, commit messages with Changes: notes.", why: "The source of truth; never modified.", where: "~/.config/projectviewer/projects.json" }
+  edges:
+    - { from: dev, to: system, label: browses }
+    - { from: agent, to: system, label: hook events }
+    - { from: system, to: repos, label: reads }
+
+- id: project-viewer-containers
+  project: project-viewer
+  level: container
+  order: 2
+  label: "2 · Containers"
+  description: "One Python process serves everything; state lives in two small local folders."
+  groups:
+    - { id: proc, label: Processes }
+    - { id: store, label: Local storage }
+    - { id: ui, label: In the browser }
+  nodes:
+    - { id: cli, label: projectviewer CLI, group: proc, col: 0, row: 0, what: "map, serve, add, remove, list, hook.", why: "One command for everything; easy to script.", where: src/projectviewer/cli.py }
+    - { id: server, label: Local server, group: proc, col: 2, row: 1, what: "Python standard-library HTTP server bound to 127.0.0.1.", why: "Zero runtime dependencies; unreachable from other machines.", where: src/projectviewer/server.py }
+    - { id: hook, label: Hook process, group: proc, col: 0, row: 2, what: "Started by Claude Code for each event; posts it and exits within 0.3 s.", why: "Must never slow down or block the agent.", where: src/projectviewer/hook.py }
+    - { id: cache, label: Facts cache, group: store, col: 2, row: 0, what: "Per-file analysis results keyed by a hash of the content.", why: "An unchanged file is never parsed twice (ADR-0003).", where: "~/.cache/projectviewer/" }
+    - { id: registry, label: Project registry, group: store, col: 0, row: 1, what: "The list of subscribed projects.", why: "Several projects in one viewer.", where: "~/.config/projectviewer/projects.json" }
+    - { id: viewer, label: Viewer (single-page app), group: ui, col: 4, row: 1, what: "React + deck.gl: the 2.5D map, lenses, changes, the Show tour, activity feed.", why: "Rendering thousands of blocks needs the GPU.", where: viewer/ }
+  edges:
+    - { from: cli, to: server, label: serve }
+    - { from: cli, to: registry, label: "add/remove" }
+    - { from: server, to: registry, label: reads }
+    - { from: server, to: cache, label: "read/write" }
+    - { from: hook, to: server, label: POST /api/events }
+    - { from: viewer, to: server, label: polls JSON }
+
+- id: project-viewer-components
+  project: project-viewer
+  level: component
+  order: 3
+  label: "3 · Components"
+  description: "How a codebase becomes a live map: discover → extract (pass 1) → link (pass 2) → world → changes → server."
+  groups:
     - { id: analysis, label: Analysis }
+    - { id: changes, label: Changes }
     - { id: serve, label: Serving }
   nodes:
-    - id: repo
-      label: Your repositories
-      group: sources
-      col: 0
-      row: 1
-      what: "Any subscribed project; several at once."
-      why: "Projects need no changes and no new dependencies (ADR-0001)."
-      where: ~/.config/projectviewer/projects.json
-    - id: gitlog
-      label: git history
-      group: sources
-      col: 0
-      row: 0
-      what: "Commits, diffs, renames (-M), and the `Changes:` notes in commit messages."
-      why: "Facts about what changed and why, written by whoever made the change."
-      where: src/projectviewer/changes.py
-    - id: hook
-      label: Claude Code hook
-      group: sources
-      col: 0
-      row: 2
-      what: "One global hook posts each AI edit, prompt and stop to the local server."
-      why: "Watch the AI work live. It can never block the agent: short timeout, silent failure, exit 0."
-      where: src/projectviewer/hook.py
-    - id: extract
-      label: Pass 1 · extract
-      group: analysis
-      col: 1
-      row: 1
-      what: "Parses each Python file with `ast`: definitions, imports, calls, types, routes, SQL tables."
-      why: "Pure per-file work, so it can be cached and run in parallel (ADR-0003)."
-      where: analyzers/python/extract.py
-    - id: cache
-      label: Content cache
-      group: analysis
-      col: 1
-      row: 2
-      what: "Facts stored under sha256(analyser version + path + content)."
-      why: "An unchanged file is never parsed twice: work is proportional to the change."
-      where: src/projectviewer/cache.py
-    - id: resolve
-      label: Pass 2 · link
-      group: analysis
-      col: 2
-      row: 1
-      what: "Links facts across files into a 'world' graph; every link tagged proven / inferred / pattern."
-      why: "The map never presents a guess as fact (ADR-0002)."
-      where: analyzers/python/resolve.py
-    - id: changes
-      label: Change sets
-      group: analysis
-      col: 2
-      row: 0
-      what: "Changed / moved / removed code, plus what it affects up to 4 steps away."
-      why: "A diff shows only the red part; impact shows the orange part."
-      where: src/projectviewer/changes.py
-    - id: server
-      label: Local server
-      group: serve
-      col: 3
-      row: 1
-      what: "Python standard-library HTTP server on 127.0.0.1: world, source, commits, changes, diff, events."
-      why: "Zero runtime dependencies; local only."
-      where: src/projectviewer/server.py
-    - id: viewer
-      label: Viewer (browser)
-      group: serve
-      col: 4
-      row: 1
-      what: "React + deck.gl: one folder level at a time, size and height = number of functions, lenses, the Show tour, the activity feed."
-      why: "Progressive disclosure: overview first, detail on demand (ADR-0006)."
-      where: viewer/src/
+    - { id: mapper, label: mapper, group: analysis, col: 0, row: 1, what: "Finds the Python files (git-aware) and runs both passes, in parallel when there are 64+ cache misses.", why: "Orchestration in one place.", where: analyzers/python/mapper.py }
+    - { id: extract, label: extract (pass 1), group: analysis, col: 1, row: 0, what: "Per-file facts from the syntax tree: definitions, imports, calls, types, routes, SQL tables.", why: "Pure, so it can be cached and parallelised.", where: analyzers/python/extract.py }
+    - { id: cache, label: cache, group: analysis, col: 1, row: 2, what: "Content-addressed storage with atomic writes.", why: "Work proportional to the change.", where: src/projectviewer/cache.py }
+    - { id: resolve, label: resolve (pass 2), group: analysis, col: 2, row: 1, what: "Links facts across files into nodes and edges, each with a certainty.", why: "Honest links: proven / inferred / pattern (ADR-0002).", where: analyzers/python/resolve.py }
+    - { id: changes, label: changes, group: changes, col: 3, row: 0, what: "Diff two worlds: changed, moved, removed, and what it affects up to 4 steps away; Changes: notes.", why: "A diff shows what changed; impact shows what it touches.", where: src/projectviewer/changes.py }
+    - { id: server, label: server, group: serve, col: 3, row: 2, what: "Project objects, fingerprint-based rebuilds, ETag caching, the events feed.", why: "Re-map only when files actually changed.", where: src/projectviewer/server.py }
+    - { id: hook, label: hook, group: serve, col: 4, row: 2, what: "Turns a Claude Code event into a small JSON post.", why: "Fail-safe integration with the agent.", where: src/projectviewer/hook.py }
   edges:
-    - { from: repo, to: extract }
+    - { from: mapper, to: extract }
     - { from: extract, to: cache, style: dashed }
-    - { from: extract, to: resolve }
-    - { from: gitlog, to: changes }
-    - { from: resolve, to: changes }
-    - { from: resolve, to: server }
-    - { from: changes, to: server }
-    - { from: hook, to: server, label: AI events }
-    - { from: server, to: viewer }
+    - { from: mapper, to: resolve }
+    - { from: changes, to: mapper }
+    - { from: server, to: mapper }
+    - { from: server, to: changes }
+    - { from: hook, to: server, style: dashed }
 
-- id: learning-app-today
+# =============================== Learning app ===============================
+- id: learning-app-context
   project: learning-app
-  label: Today
-  description: "How this site is made. Records are imported, teaching content is typed, the build refuses gaps, and the result is plain static HTML."
+  level: context
+  order: 1
+  label: "1 · Context"
+  description: "A public static website built from the projects' own repositories."
   groups:
-    - { id: in, label: Inputs }
-    - { id: build, label: Build }
-    - { id: out, label: Delivery }
+    - { id: people, label: People }
+    - { id: system, label: This system }
+    - { id: external, label: Outside systems }
   nodes:
-    - id: repos
-      label: Project repos (public)
-      group: in
-      col: 0
-      row: 0
-      what: "Road Risk and projectViewer on GitHub, read from their main branch."
-      why: "What is merged is what is taught."
-      where: sources.config.json
-    - id: sync
-      label: Sync script
-      group: in
-      col: 1
-      row: 0
-      what: "Imports ADRs, devlogs and status files unchanged; extracts dependencies, CI jobs and history."
-      why: "The site can't disagree with the projects (ADR-0002). A privacy guard blocks paths and emails (ADR-0004)."
-      where: scripts/sync-sources.mjs
-    - id: teaching
-      label: Teaching layer
-      group: in
-      col: 1
-      row: 1
-      what: "Decision cards, architecture views, tool cards, concepts, journey, glossary: structured YAML and MDX."
-      why: "Explains the records; one source feeds many views."
-      where: src/data/, src/content/docs/
-    - id: schemas
-      label: Content schemas
-      group: build
-      col: 2
-      row: 1
-      what: "zod schemas for every collection: a decision without options or a tool without a 'why' fails the build."
-      why: "Quality enforced like types in code."
-      where: src/content.config.ts
-    - id: coverage
-      label: Coverage check
-      group: build
-      col: 2
-      row: 0
-      what: "Every dependency needs a tool card; every ADR needs a decision card."
-      why: "A missing explanation is a red build, not a forgotten task (ADR-0003)."
-      where: scripts/check-coverage.mjs
-    - id: astro
-      label: Astro + Starlight build
-      group: build
-      col: 3
-      row: 1
-      what: "Static HTML, React islands for the explorers, a Pagefind search index."
-      why: "Fast, accessible, free to host (ADR-0001)."
-      where: astro.config.mjs
-    - id: pages
-      label: GitHub Pages
-      group: out
-      col: 4
-      row: 1
-      what: "GitHub Actions builds and deploys on every merge to main."
-      why: "Static hosting: no server, no bill, HTTPS."
-      where: .github/workflows/deploy.yml
-    - id: you
-      label: You
-      group: out
-      col: 4
-      row: 0
-      what: "Pick first, then reveal; explore; later, quizzes."
-      why: "Active learning (ADR-0005)."
-      where: this site
+    - { id: learner, label: Learner, group: people, col: 0, row: 0, what: "Reads, explores and makes decisions; picks are kept in their browser.", why: "The user: learns reasoning, not syntax.", where: "Any browser" }
+    - { id: dev, label: Developer + AI agent, group: people, col: 0, row: 2, what: "Runs the sync, writes the teaching layer, opens PRs.", why: "Keeping the site current is part of finishing work in every project.", where: CLAUDE.md }
+    - { id: system, label: Learning site, group: system, col: 2, row: 1, what: "Imports records and code facts, teaches them, verifies itself.", why: "The thing being designed.", where: "This repository" }
+    - { id: repos, label: Project repositories, group: external, col: 4, row: 0, what: "Road Risk and projectViewer on GitHub (main branch).", why: "What is merged is what is taught.", where: sources.config.json }
+    - { id: pages, label: GitHub Pages, group: external, col: 4, row: 2, what: "Serves the built static site over HTTPS.", why: "Free hosting with nothing to run.", where: .github/workflows/deploy.yml }
   edges:
-    - { from: repos, to: sync }
-    - { from: sync, to: coverage }
-    - { from: sync, to: schemas, label: records }
-    - { from: teaching, to: schemas }
-    - { from: teaching, to: coverage, style: dashed }
-    - { from: schemas, to: astro }
+    - { from: learner, to: system, label: learns from }
+    - { from: dev, to: system, label: updates }
+    - { from: system, to: repos, label: syncs from }
+    - { from: system, to: pages, label: deployed to }
+
+- id: learning-app-containers
+  project: learning-app
+  level: container
+  order: 2
+  label: "2 · Containers"
+  description: "Nothing runs on a server. A sync step produces data, a build step produces HTML, the browser runs the islands."
+  groups:
+    - { id: sync, label: Sync (on the developer's machine) }
+    - { id: build, label: Build (CI) }
+    - { id: browser, label: In the browser }
+  nodes:
+    - { id: sync, label: Sync script, group: sync, col: 0, row: 0, what: "Clones the project repos; imports records; extracts dependencies, CI jobs, history and status.", why: "Facts come from the projects, never retyped.", where: scripts/sync-sources.mjs }
+    - { id: readers, label: Code readers, group: sync, col: 0, row: 1, what: "Python (ast) and TypeScript (compiler parser) readers: symbols, parameters, calls, endpoints.", why: "The code reference and snippet checks need real code facts.", where: "scripts/read_python.py, scripts/read-typescript.mjs" }
+    - { id: content, label: Content in git, group: sync, col: 1, row: 1, what: "Generated facts and records, plus the teaching layer (YAML + MDX).", why: "Everything reviewable in PRs; the build needs no network.", where: "src/data/, src/generated/, src/content/" }
+    - { id: coverage, label: Coverage check, group: build, col: 2, row: 0, what: "Fails if a tool, ADR, endpoint or snippet is unexplained or wrong.", why: "A missing explanation is a red build.", where: scripts/check-coverage.mjs }
+    - { id: astro, label: Astro build, group: build, col: 2, row: 1, what: "Schemas, pages, islands, search index → static HTML.", why: "Fast, accessible, free to host.", where: astro.config.mjs }
+    - { id: pages, label: GitHub Pages, group: build, col: 3, row: 1, what: "Static hosting.", why: "No server, no bill.", where: .github/workflows/deploy.yml }
+    - { id: islands, label: Islands + localStorage, group: browser, col: 4, row: 1, what: "React explorers; decision picks saved in the browser.", why: "Interactive only where it teaches.", where: src/components/*.tsx }
+  edges:
+    - { from: sync, to: readers }
+    - { from: sync, to: content }
+    - { from: readers, to: content }
+    - { from: content, to: coverage }
+    - { from: content, to: astro }
     - { from: coverage, to: astro, label: must pass }
     - { from: astro, to: pages }
-    - { from: pages, to: you }
+    - { from: pages, to: islands }
+
+- id: learning-app-components
+  project: learning-app
+  level: component
+  order: 3
+  label: "3 · Components"
+  description: "Inside the build: data is loaded and checked at build time; components render it; a few hydrate in the browser."
+  groups:
+    - { id: data, label: Data and rules }
+    - { id: render, label: Rendering }
+    - { id: nav, label: Navigation and text }
+  nodes:
+    - { id: schemas, label: content.config.ts, group: data, col: 0, row: 1, what: "zod schemas for every collection.", why: "A wrong entry fails like a type error.", where: src/content.config.ts }
+    - { id: wrappers, label: Astro wrappers, group: render, col: 2, row: 0, what: "Decisions.astro, Architecture.astro, Stack.astro…: load data at build time, pass it to islands.", why: "Container/presentational split: data loading stays out of the UI code.", where: "src/components/*.astro" }
+    - { id: islands, label: React islands, group: render, col: 3, row: 0, what: "DecisionExplorer, ArchitectureExplorer, StackMap, CodeReference, Walkthrough, RiskPlayground.", why: "Interactivity only where it teaches.", where: "src/components/*.tsx" }
+    - { id: middleware, label: routeData middleware, group: nav, col: 2, row: 2, what: "Keeps only the current area's sidebar; sets the area colour.", why: "Inside a project you see only that project.", where: src/routeData.ts }
+    - { id: acronyms, label: Acronym expander, group: nav, col: 3, row: 2, what: "Spells out the first use of each acronym; hover for the rest.", why: "One list, applied everywhere, including imported records.", where: "src/lib/acronyms.mjs, rehype-acronyms.mjs" }
+    - { id: coverage, label: check-coverage, group: data, col: 0, row: 0, what: "Cross-checks the teaching layer against the generated facts.", why: "Nothing unexplained, nothing pointing at code that no longer exists.", where: scripts/check-coverage.mjs }
+  edges:
+    - { from: schemas, to: wrappers }
+    - { from: coverage, to: wrappers, style: dashed }
+    - { from: wrappers, to: islands }
+    - { from: middleware, to: wrappers, style: dashed }
+    - { from: acronyms, to: islands }

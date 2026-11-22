@@ -122,6 +122,7 @@
         ]
       }
     ],
+    "status": "As of: 2026-11-22 · Module structure: see architecture.md. · Current phase: Phase 0, in progress. PRs #1–#4 (workflow/docs, tooling/CI, spatial-extension fix, module refactor) are merged; `main` is protected and requires the checks *Lint & dependency checks* and *Tests*. 117 tests passing. Database `data-2026-11-22` (cleaned, built reproducibly from raw). API version 2.0.0 (renamed field, see issue #5).",
     "records": {
       "decisions": [
         {
@@ -337,6 +338,7 @@
         ]
       }
     ],
+    "status": "As of: 2026-11-21 · Phase: 3 (changes) mostly done; 4 (service) partly. Branch `feat/analyzer-fixes`, stacked on #1 and #2.",
     "records": {
       "decisions": [
         {
@@ -420,13 +422,20 @@
   },
   "learning-app": {
     "repo": "https://github.com/MdNoman1538/ai-driven-development-learning",
-    "commit": "81ca1ea",
-    "commits": 6,
-    "mergedPullRequests": 1,
+    "commit": "a006d3a",
+    "commits": 10,
+    "mergedPullRequests": 2,
     "firstCommit": "2026-11-22",
     "lastCommit": "2026-11-22",
     "python": null,
     "dependencies": [
+      {
+        "name": "@astrojs/markdown-remark",
+        "version": "7.3.6",
+        "group": "runtime",
+        "file": "package.json",
+        "ecosystem": "node"
+      },
       {
         "name": "@astrojs/react",
         "version": "7.1.4",
@@ -540,6 +549,7 @@
         ]
       }
     ],
+    "status": null,
     "records": {
       "decisions": [
         {
@@ -581,6 +591,30 @@
           "status": "Accepted",
           "date": "2026-11-22",
           "title": "ADR-0005: Pick first, then reveal"
+        },
+        {
+          "kind": "decisions",
+          "slug": "learning-app/records/decisions/0006-scoped-projects-and-combined-knowledge",
+          "number": 6,
+          "status": "Accepted",
+          "date": "2026-11-22",
+          "title": "ADR-0006: Scoped projects and a separate \"Combined knowledge\" area"
+        },
+        {
+          "kind": "decisions",
+          "slug": "learning-app/records/decisions/0007-code-level-teaching-verified-against-source",
+          "number": 7,
+          "status": "Accepted",
+          "date": "2026-11-22",
+          "title": "ADR-0007: Code-level teaching, read from the code and verified against it"
+        },
+        {
+          "kind": "decisions",
+          "slug": "learning-app/records/decisions/0008-stage-aligned-learning-paths",
+          "number": 8,
+          "status": "Accepted",
+          "date": "2026-11-22",
+          "title": "ADR-0008: Learning aligned with each project's development stages"
         }
       ],
       "devlog": [
@@ -589,6 +623,12 @@
           "slug": "learning-app/records/devlog/2026-11-22-building-the-learning-app",
           "date": "2026-11-22",
           "title": "2026-11-22: Building the learning app"
+        },
+        {
+          "kind": "devlog",
+          "slug": "learning-app/records/devlog/2026-11-22-version-2-code-level-learning",
+          "date": "2026-11-22",
+          "title": "2026-11-22: Version 2: scoped projects, code-level learning, stage-aligned paths"
         }
       ],
       "overview": []
