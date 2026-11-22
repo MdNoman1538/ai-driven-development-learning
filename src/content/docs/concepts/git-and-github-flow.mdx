@@ -1,0 +1,54 @@
+---
+title: "Git and GitHub Flow"
+description: "How every change is recorded, reviewed and merged, and why the merge method matters."
+concept:
+  summary: "How every change is recorded, reviewed and merged, and why the merge method matters."
+  projects: [road-risk, project-viewer, learning-app]
+  level: foundation
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+**git** records a project's history as *commits*: snapshots with a message saying what changed and why. A **branch** is a separate line of work. A **pull request (PR)** proposes merging a branch into `main`, showing the diff, the discussion and the CI results.
+
+**GitHub Flow** is the simplest professional workflow: `main` always works, and every change goes through a short-lived branch, a PR, CI and a review.
+
+## Why it matters
+
+With an AI agent writing the code, the PR is **the checkpoint**: the moment a human reads the diff and a machine proves it works. Without it, changes pile up unverified.
+
+## How we used it
+
+- **Branch protection** on `main`: merging needs a PR and passing checks, and the branch must be up to date with `main`, so CI tests the *combination* of changes.
+- **Conventional Commits**: `fix(api): …`, `docs: …`. Every commit has a `Changes:` section naming each changed function and why, which projectViewer shows on the code.
+- **Merge commits, not squash**: squashing folds a PR's commits into one and loses each commit's notes (projectViewer ADR-0007).
+- **Stacked PRs**: Road Risk's first four PRs built on each other (#2 on #1…) and were merged in order, retargeting each to `main` after the one below it.
+
+## The trade-off
+
+A few minutes per change for branch, PR and CI, in exchange for a history where every change was checked and can be explained. With merge commits the log is noisier; `git log --first-parent main` shows one line per PR.
+
+## Check yourself
+
+<details class="check">
+<summary>Why require a branch to be up to date with main before merging?</summary>
+
+Two PRs can each pass CI alone and still break `main` once combined. Requiring the branch to be up to date makes CI run on the combined result.
+
+</details>
+
+<details class="check">
+<summary>Why did these projects stop using squash merges?</summary>
+
+Each commit carries its own `Changes:` notes. A squash folds 5–15 commits into one and mixes their notes together; merge commits keep every commit and its notes unchanged.
+
+</details>
+
+<details class="check">
+<summary>Why are required approvals set to 0 if review is mandatory?</summary>
+
+GitHub doesn't let authors approve their own PRs. With one maintainer, review is enforced by the process (the owner reads every diff) and the machine part by required CI checks.
+
+</details>

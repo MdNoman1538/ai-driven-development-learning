@@ -1,0 +1,44 @@
+---
+title: "Measure, don't guess"
+description: "Profiling, benchmarks and the wrong diagnosis that a profile corrected."
+concept:
+  summary: "Profiling, benchmarks and the wrong diagnosis that a profile corrected."
+  projects: [road-risk, project-viewer]
+  level: core
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+Before optimising, **measure where the time actually goes**: a **benchmark** (time the whole operation, several runs, take the median) and a **profile** (which parts take the time).
+
+## Why it matters
+
+Intuition about performance is often wrong, and optimising the wrong part wastes effort while the real cause stays.
+
+## How we used it
+
+- **The first benchmark changed the architecture.** A 78 ms risk lookup spent about 56 ms just reconnecting to the database. One persistent connection: 15 ms. Holding the coordinates in memory: 0.3 ms. That led to ADR-0003 (precompute, then look up).
+- **A wrong diagnosis, corrected.** The status file said large-radius lookups were slow "in Python, not SQL". That claim came from *reading* the code. A profile showed the SQL took 107 of 124 ms. Optimising the Python saved only 11 ms. The status file was corrected, with the measurement.
+- **Every claim states its method**: machine, versions, number of runs, median. projectViewer records cold and warm timings (pandas: 4.3 s cold, 1.6 s warm).
+
+<Aside type="tip">
+The rule in CLAUDE.md: *"any performance or data claim must come from a measurement you ran; record how."*
+</Aside>
+
+## Check yourself
+
+<details class="check">
+<summary>Why take the median of several runs?</summary>
+
+Single runs are noisy (caches, other programs). The median ignores outliers in both directions.
+
+</details>
+
+<details class="check">
+<summary>What went wrong with the 'slow in Python' claim?</summary>
+
+It came from reading the code, not from a profile. Measured, the database query dominated; Python was a small share.
+
+</details>

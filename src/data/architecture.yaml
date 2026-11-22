@@ -1,0 +1,385 @@
+# Architecture views. Nodes sit on a grid (col, row); edges are drawn between them.
+
+- id: road-risk-today
+  project: road-risk
+  label: Today
+  description: What exists now, after Phase 0. Data flows left to right; dependencies inside the app point one way.
+  groups:
+    - { id: data, label: Data }
+    - { id: app, label: Application }
+    - { id: out, label: Delivery }
+  nodes:
+    - id: raw
+      label: Raw crash CSVs
+      group: data
+      col: 0
+      row: 1
+      what: "12 yearly files from Väylävirasto (2014–2025) in two formats: 2014–21 and 2022+, three text encodings."
+      why: "The open source of truth. Kept out of git (data/raw/ is ignored) because it's large and anyone can download it."
+      where: data/raw/
+    - id: ingestion
+      label: Ingestion + cleaning
+      group: data
+      col: 1
+      row: 1
+      what: "Reads every file as text, applies the cleaning rules, quarantines unusable rows, logs each file's checksum."
+      why: "Cleaning as code means the database can be rebuilt identically from the raw files (ADR-0008)."
+      where: src/ingestion/ingest_all.py, clean.py
+    - id: duckdb
+      label: DuckDB warehouse
+      group: data
+      col: 2
+      row: 1
+      what: "180,734 crashes and 309,544 participants with an R-tree spatial index; ingest_rejects and ingest_files for auditing."
+      why: "A fast analytics engine inside the program, with no server (ADR-0003)."
+      where: data/processed/road_risk.duckdb
+    - id: release
+      label: Data release
+      group: out
+      col: 2
+      row: 0
+      what: "Each database version is a GitHub Release, pinned by a lock file with its SHA-256."
+      why: "Keeps a 38 MB binary out of git and gives every data version a name (ADR-0007)."
+      where: data/road_risk.lock.json, src/core/dataset.py
+    - id: core
+      label: core
+      group: app
+      col: 3
+      row: 2
+      what: "The only place database connections are opened; installs + loads the spatial extension; project paths."
+      why: "One place for infrastructure fixed the fresh-server bug everywhere at once."
+      where: src/core/
+    - id: scoring
+      label: scoring
+      group: app
+      col: 3
+      row: 1
+      what: "SpatialRiskEngine: crashes within a radius, weighted by severity × recency × distance, → score 0–100 and a tier."
+      why: "The risk logic in one module that the API and the dashboard both use. To be replaced by segment-level risk in Phases 1–2."
+      where: src/scoring/risk_engine.py
+    - id: i18n
+      label: i18n
+      group: app
+      col: 4
+      row: 2
+      what: "Finnish → English labels; NULL reads 'Not recorded' / 'Ei tiedossa'."
+      why: "The data stays in its canonical Finnish values; translation happens only at the output."
+      where: src/i18n/translator.py
+    - id: api
+      label: API
+      group: out
+      col: 4
+      row: 0
+      what: "FastAPI: deep /health, point risk, route risk. Internal errors return only an error id."
+      why: "A machine interface for other systems, and later the cloud side of the product."
+      where: src/api/main.py
+    - id: ui
+      label: Dashboard
+      group: out
+      col: 4
+      row: 1
+      what: "Streamlit + Folium map: pick a municipality, see hotspots, risk metrics and incidents."
+      why: "Exploration and demos. Not the in-car interface."
+      where: src/ui/app.py
+    - id: ci
+      label: Tests + CI
+      group: out
+      col: 1
+      row: 2
+      what: "117 tests; GitHub Actions runs lint, the lockfile check and the tests on every PR; branch protection requires them."
+      why: "Tests are the contract with the AI agent; CI is proof on a clean machine."
+      where: tests/, .github/workflows/ci.yml
+  edges:
+    - { from: raw, to: ingestion }
+    - { from: ingestion, to: duckdb, label: builds }
+    - { from: duckdb, to: release, label: published as }
+    - { from: duckdb, to: core, label: opened by }
+    - { from: scoring, to: core }
+    - { from: scoring, to: i18n }
+    - { from: api, to: scoring }
+    - { from: ui, to: scoring }
+    - { from: ci, to: release, label: fetches, style: dashed }
+
+- id: road-risk-target
+  project: road-risk
+  label: Target (in the car)
+  description: "The planned product. The cloud precomputes; the car looks up, offline. The LLM explains but never sits on the decision path (ADR-0001)."
+  groups:
+    - { id: cloud, label: Cloud (build & update) }
+    - { id: car, label: In the car (offline) }
+  nodes:
+    - id: sources
+      label: Source data
+      group: cloud
+      col: 0
+      row: 0
+      what: "Yearly crash data, the road network (Digiroad/OSM), traffic volumes, historical weather (FMI)."
+      why: "Risk needs exposure (traffic) and road geometry, not crashes alone."
+      where: Phases 1–3
+    - id: pipeline
+      label: Data pipeline
+      group: cloud
+      col: 1
+      row: 0
+      what: "raw → clean → ready layers; every crash map-matched to a road segment."
+      why: "Segment-level risk is what the car can look up."
+      where: Phase 1
+    - id: model
+      label: Risk model
+      group: cloud
+      col: 2
+      row: 0
+      what: "Empirical Bayes baseline, then a calibrated gradient-boosted model per segment × condition."
+      why: "Statistically sound, testable risk: never raw counts (ADR-0001)."
+      where: Phases 2 and 4
+    - id: tiles
+      label: Risk tiles
+      group: cloud
+      col: 3
+      row: 0
+      what: "Precomputed risk per road segment × condition, versioned, shipped as delta updates."
+      why: "Microsecond lookups in the car (ADR-0003)."
+      where: Phase 8
+    - id: gps
+      label: GPS + map-matching
+      group: car
+      col: 0
+      row: 2
+      what: "GPS at 1–10 Hz, a Kalman filter, then which road and direction the car is on."
+      why: "Risk belongs to a road in a direction, not to a point on a map."
+      where: Phase 5
+    - id: ahead
+      label: Road ahead (2 km)
+      group: car
+      col: 1
+      row: 2
+      what: "The segments the car will reach in the next 15–20 seconds (an 'electronic horizon')."
+      why: "Warn before the junction, not at it."
+      where: Phase 5
+    - id: context
+      label: Live context
+      group: car
+      col: 1
+      row: 1
+      what: "Sun position (computed locally), road weather (Digitraffic), forecasts, the car's sensors."
+      why: "The same conditions the model was trained on, measured live (no training/serving skew)."
+      where: Phase 3; sun position in Phase 1
+    - id: risk
+      label: Conditional risk
+      group: car
+      col: 2
+      row: 2
+      what: "Tile lookup × current conditions, using a small ONNX model in under 10 ms."
+      why: "Deterministic, calibrated, testable."
+      where: Phases 4–5
+    - id: policy
+      label: Alert policy
+      group: car
+      col: 3
+      row: 2
+      what: "When to alert and when to stay quiet: timing, repeat suppression, cooldown."
+      why: "A warning system that cries wolf gets switched off. Target: under 1 false alarm per 100 km."
+      where: Phase 5
+    - id: driver
+      label: Driver
+      group: car
+      col: 4
+      row: 2
+      what: "A dashboard icon and a chime, in Finnish or English."
+      why: "The only output that matters."
+      where: Phase 5
+    - id: llm
+      label: Small LLM (explains)
+      group: car
+      col: 3
+      row: 3
+      what: "A 4-bit Qwen for 'why?' questions, alert explanations and voice."
+      why: "Language is what LLMs are good at; it never triggers or blocks an alert."
+      where: Phases 6–7
+  edges:
+    - { from: sources, to: pipeline }
+    - { from: pipeline, to: model }
+    - { from: model, to: tiles }
+    - { from: tiles, to: risk, label: over-the-air, style: dashed }
+    - { from: gps, to: ahead }
+    - { from: ahead, to: risk }
+    - { from: context, to: risk }
+    - { from: risk, to: policy }
+    - { from: policy, to: driver }
+    - { from: policy, to: llm, label: explains afterwards, style: dashed }
+
+- id: project-viewer-today
+  project: project-viewer
+  label: Today
+  description: "How a codebase becomes a live map. Everything runs locally on 127.0.0.1; nothing leaves the machine."
+  groups:
+    - { id: sources, label: Event sources }
+    - { id: analysis, label: Analysis }
+    - { id: serve, label: Serving }
+  nodes:
+    - id: repo
+      label: Your repositories
+      group: sources
+      col: 0
+      row: 1
+      what: "Any subscribed project; several at once."
+      why: "Projects need no changes and no new dependencies (ADR-0001)."
+      where: ~/.config/projectviewer/projects.json
+    - id: gitlog
+      label: git history
+      group: sources
+      col: 0
+      row: 0
+      what: "Commits, diffs, renames (-M), and the `Changes:` notes in commit messages."
+      why: "Facts about what changed and why, written by whoever made the change."
+      where: src/projectviewer/changes.py
+    - id: hook
+      label: Claude Code hook
+      group: sources
+      col: 0
+      row: 2
+      what: "One global hook posts each AI edit, prompt and stop to the local server."
+      why: "Watch the AI work live. It can never block the agent: short timeout, silent failure, exit 0."
+      where: src/projectviewer/hook.py
+    - id: extract
+      label: Pass 1 · extract
+      group: analysis
+      col: 1
+      row: 1
+      what: "Parses each Python file with `ast`: definitions, imports, calls, types, routes, SQL tables."
+      why: "Pure per-file work, so it can be cached and run in parallel (ADR-0003)."
+      where: analyzers/python/extract.py
+    - id: cache
+      label: Content cache
+      group: analysis
+      col: 1
+      row: 2
+      what: "Facts stored under sha256(analyser version + path + content)."
+      why: "An unchanged file is never parsed twice: work is proportional to the change."
+      where: src/projectviewer/cache.py
+    - id: resolve
+      label: Pass 2 · link
+      group: analysis
+      col: 2
+      row: 1
+      what: "Links facts across files into a 'world' graph; every link tagged proven / inferred / pattern."
+      why: "The map never presents a guess as fact (ADR-0002)."
+      where: analyzers/python/resolve.py
+    - id: changes
+      label: Change sets
+      group: analysis
+      col: 2
+      row: 0
+      what: "Changed / moved / removed code, plus what it affects up to 4 steps away."
+      why: "A diff shows only the red part; impact shows the orange part."
+      where: src/projectviewer/changes.py
+    - id: server
+      label: Local server
+      group: serve
+      col: 3
+      row: 1
+      what: "Python standard-library HTTP server on 127.0.0.1: world, source, commits, changes, diff, events."
+      why: "Zero runtime dependencies; local only."
+      where: src/projectviewer/server.py
+    - id: viewer
+      label: Viewer (browser)
+      group: serve
+      col: 4
+      row: 1
+      what: "React + deck.gl: one folder level at a time, size and height = number of functions, lenses, the Show tour, the activity feed."
+      why: "Progressive disclosure: overview first, detail on demand (ADR-0006)."
+      where: viewer/src/
+  edges:
+    - { from: repo, to: extract }
+    - { from: extract, to: cache, style: dashed }
+    - { from: extract, to: resolve }
+    - { from: gitlog, to: changes }
+    - { from: resolve, to: changes }
+    - { from: resolve, to: server }
+    - { from: changes, to: server }
+    - { from: hook, to: server, label: AI events }
+    - { from: server, to: viewer }
+
+- id: learning-app-today
+  project: learning-app
+  label: Today
+  description: "How this site is made. Records are imported, teaching content is typed, the build refuses gaps, and the result is plain static HTML."
+  groups:
+    - { id: in, label: Inputs }
+    - { id: build, label: Build }
+    - { id: out, label: Delivery }
+  nodes:
+    - id: repos
+      label: Project repos (public)
+      group: in
+      col: 0
+      row: 0
+      what: "Road Risk and projectViewer on GitHub, read from their main branch."
+      why: "What is merged is what is taught."
+      where: sources.config.json
+    - id: sync
+      label: Sync script
+      group: in
+      col: 1
+      row: 0
+      what: "Imports ADRs, devlogs and status files unchanged; extracts dependencies, CI jobs and history."
+      why: "The site can't disagree with the projects (ADR-0002). A privacy guard blocks paths and emails (ADR-0004)."
+      where: scripts/sync-sources.mjs
+    - id: teaching
+      label: Teaching layer
+      group: in
+      col: 1
+      row: 1
+      what: "Decision cards, architecture views, tool cards, concepts, journey, glossary: structured YAML and MDX."
+      why: "Explains the records; one source feeds many views."
+      where: src/data/, src/content/docs/
+    - id: schemas
+      label: Content schemas
+      group: build
+      col: 2
+      row: 1
+      what: "zod schemas for every collection: a decision without options or a tool without a 'why' fails the build."
+      why: "Quality enforced like types in code."
+      where: src/content.config.ts
+    - id: coverage
+      label: Coverage check
+      group: build
+      col: 2
+      row: 0
+      what: "Every dependency needs a tool card; every ADR needs a decision card."
+      why: "A missing explanation is a red build, not a forgotten task (ADR-0003)."
+      where: scripts/check-coverage.mjs
+    - id: astro
+      label: Astro + Starlight build
+      group: build
+      col: 3
+      row: 1
+      what: "Static HTML, React islands for the explorers, a Pagefind search index."
+      why: "Fast, accessible, free to host (ADR-0001)."
+      where: astro.config.mjs
+    - id: pages
+      label: GitHub Pages
+      group: out
+      col: 4
+      row: 1
+      what: "GitHub Actions builds and deploys on every merge to main."
+      why: "Static hosting: no server, no bill, HTTPS."
+      where: .github/workflows/deploy.yml
+    - id: you
+      label: You
+      group: out
+      col: 4
+      row: 0
+      what: "Pick first, then reveal; explore; later, quizzes."
+      why: "Active learning (ADR-0005)."
+      where: this site
+  edges:
+    - { from: repos, to: sync }
+    - { from: sync, to: coverage }
+    - { from: sync, to: schemas, label: records }
+    - { from: teaching, to: schemas }
+    - { from: teaching, to: coverage, style: dashed }
+    - { from: schemas, to: astro }
+    - { from: coverage, to: astro, label: must pass }
+    - { from: astro, to: pages }
+    - { from: pages, to: you }

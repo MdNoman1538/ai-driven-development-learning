@@ -1,0 +1,51 @@
+---
+title: "Performance by architecture"
+description: "Precompute in the cloud, look up in the car: why when and where work happens matters more than tuning."
+concept:
+  summary: "Precompute in the cloud, look up in the car: why when and where work happens matters more than tuning."
+  projects: [road-risk]
+  level: advanced
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+The biggest speed-ups usually come from changing **when and where work happens**, not from tuning one query. **Precomputing** does expensive work once, ahead of time, so the moment that matters is just a lookup.
+
+## How we used it
+
+The car must check about 2 km of road ahead, many times a second, offline, on modest hardware. Measurements drove the design (ADR-0003):
+
+| Approach | Time per lookup |
+|---|---|
+| Original (new connection each time) | 78 ms |
+| One persistent connection | 15 ms |
+| Coordinates in memory, numpy scan | 0.3 ms |
+| **Precomputed grid in memory (prototype)** | **0.29 µs** |
+
+That's about **85,000× faster** than the query. The whole prototype map was 0.9 MB.
+
+So the system is split in two:
+- **In the cloud**, DuckDB does the heavy lifting offline: cleaning, joins, statistics, model training. It outputs **risk tiles**: risk per road segment × condition.
+- **In the car**, the tiles sit in memory, and each GPS update is arithmetic plus a lookup. Because lookups are nearly free, the car can check hundreds of points along the road ahead (the **electronic horizon**) and warn *before* the junction.
+
+## The trade-off
+
+Tiles go stale between rebuilds, but crash data only changes yearly. Live conditions (weather, lighting) adjust the looked-up value at runtime with a small model.
+
+## Check yourself
+
+<details class="check">
+<summary>Why not just ship a faster database to the car?</summary>
+
+The problem wasn't the database. It was computing on demand something that changes once a year. Precomputing removes the work from the critical moment.
+
+</details>
+
+<details class="check">
+<summary>What makes a lookup 'predictable' in a way a query isn't?</summary>
+
+Its cost is the same every time; a query's cost depends on how much data matches.
+
+</details>

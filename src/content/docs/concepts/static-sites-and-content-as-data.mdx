@@ -1,0 +1,42 @@
+---
+title: "Static sites and content as data"
+description: "Why this site is plain HTML with interactive islands, and how schemas and coverage keep it honest."
+concept:
+  summary: "Why this site is plain HTML with interactive islands, and how schemas and coverage keep it honest."
+  projects: [learning-app]
+  level: core
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+A **static site** is a set of ready-built HTML files: nothing runs on a server when someone visits. **Islands** are small interactive components inside otherwise static pages; only they load JavaScript. **Content as data** means teaching material is structured (YAML with a schema), not free text.
+
+## Why this site is built this way
+
+- **Content should be plain, fast HTML.** Interactivity is added only where it teaches: the architecture explorer, decision cards, stack map and data journey.
+- **Free and robust hosting.** GitHub Pages serves static files over HTTPS with nothing to crash.
+- **Schemas enforce quality.** Every decision card *must* have options, a choice, reasons and consequences, or the build fails, like a type error.
+- **One source, many views.** The same decision data feeds the cards, the journey links, and later the quizzes.
+- **Coverage instead of good intentions.** The build fails if a project uses a tool, or has an ADR, that the site doesn't explain.
+
+## The trade-off
+
+No server means no accounts and no shared progress: your picks are stored in your own browser. If the site ever needs accounts, that would be a new ADR.
+
+## Check yourself
+
+<details class="check">
+<summary>What's an 'island' on a static site?</summary>
+
+An interactive component inside a static page. Only it ships JavaScript; the rest is plain HTML.
+
+</details>
+
+<details class="check">
+<summary>How does the coverage check keep the site current?</summary>
+
+It compares each project's real dependencies and ADRs with the site's tool and decision cards, and fails the build if any are unexplained.
+
+</details>

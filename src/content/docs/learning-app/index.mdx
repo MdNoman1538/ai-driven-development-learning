@@ -1,0 +1,15 @@
+---
+title: This learning app
+description: "How this site was designed and built."
+tableOfContents: false
+---
+
+import ProjectOverview from '../../../components/ProjectOverview.astro';
+
+<ProjectOverview project="learning-app" sections={[
+  ["architecture", "Architecture", "Click through the system, box by box"],
+  ["decisions", "Decisions: you choose", "Make each call, then compare"],
+  ["stack", "Tech stack", "Every tool, why, and what lost"],
+  ["journey", "Journey", "What happened, session by session"],
+  ["records", "Original records", "ADRs, devlogs, roadmap, status"]
+]} />

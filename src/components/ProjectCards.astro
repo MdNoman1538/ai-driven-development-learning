@@ -1,0 +1,34 @@
+---
+import { getCollection } from 'astro:content';
+import facts from '../generated/sources.json';
+import { href } from '../lib/site';
+
+const projects = (await getCollection('projects')).map((e) => e.data).sort((a, b) => a.order - b.order);
+const decisions = (await getCollection('decisions')).map((e) => e.data);
+const tools = (await getCollection('tools')).map((e) => e.data);
+const stats = (id: string) => {
+  const f = (facts as any)[id];
+  return [
+    [decisions.filter((d) => d.project === id).length, 'decisions'],
+    [tools.filter((t) => t.used_in.some((u) => u.project === id)).length, 'tools'],
+    [f?.commits ?? 0, 'commits'],
+    [f?.mergedPullRequests ?? 0, 'merged PRs'],
+  ];
+};
+---
+<div class="lx-projects not-content">
+  {projects.map((p) => (
+    <a class={`lx-project lx-project--${p.id}`} href={href(p.id)}>
+      <span class="lx-project__kind">{p.kind}</span>
+      <h3>{p.name}</h3>
+      <p>{p.tagline}</p>
+      <dl class="lx-project__stats">
+        {stats(p.id).map(([n, label]) => (
+          <div><dt>{n}</dt><dd>{label}</dd></div>
+        ))}
+      </dl>
+      <span class="lx-project__status">{p.status}</span>
+      <span class="lx-project__go">Explore →</span>
+    </a>
+  ))}
+</div>

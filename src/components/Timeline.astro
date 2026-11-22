@@ -1,0 +1,49 @@
+---
+import { getCollection } from 'astro:content';
+import { href, PROJECT_NAMES } from '../lib/site';
+
+interface Props { project?: string }
+const { project } = Astro.props;
+const decisions = new Map((await getCollection('decisions')).map((d) => [d.data.id, d.data]));
+const concepts = new Map((await getCollection('docs', (e) => !!e.data.concept)).map((e) => [e.id.replace(/^concepts\//, ''), e.data.title]));
+const sessions = (await getCollection('journey'))
+  .map((e) => e.data)
+  .filter((s) => !project || s.projects.includes(project as any));
+const decisionPage = (id: string) => {
+  const d = decisions.get(id);
+  return d ? href(`${d.project}/decisions#${id}`) : '#';
+};
+---
+<ol class="lx-timeline not-content">
+  {sessions.map((s) => (
+    <li class="lx-timeline__item">
+      <div class="lx-timeline__meta">
+        <time>{s.date}</time>
+        {s.projects.map((p) => <span class={`lx-pill lx-pill--${p}`}>{PROJECT_NAMES[p]}</span>)}
+      </div>
+      <h3>{s.title}</h3>
+      <p>{s.summary}</p>
+      <details>
+        <summary>What happened</summary>
+        <ul>{s.did.map((d) => <li>{d}</li>)}</ul>
+      </details>
+      {s.decided.length > 0 && (
+        <p class="lx-timeline__refs">
+          <strong>Decisions:</strong>{' '}
+          {s.decided.map((id, i) => (
+            <>{i > 0 && ' · '}<a href={decisionPage(id)}>{decisions.get(id)?.ref} {decisions.get(id)?.title}</a></>
+          ))}
+        </p>
+      )}
+      {s.concepts.length > 0 && (
+        <p class="lx-timeline__refs">
+          <strong>Concepts:</strong>{' '}
+          {s.concepts.map((c, i) => (
+            <>{i > 0 && ' · '}<a href={href(`concepts/${c}`)}>{concepts.get(c) ?? c}</a></>
+          ))}
+        </p>
+      )}
+      <p class="lx-lesson"><strong>Lesson:</strong> {s.lesson}</p>
+    </li>
+  ))}
+</ol>

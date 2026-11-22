@@ -1,0 +1,15 @@
+---
+title: projectViewer
+description: "A live map of a codebase that shows the impact of every change and records how it was built."
+tableOfContents: false
+---
+
+import ProjectOverview from '../../../components/ProjectOverview.astro';
+
+<ProjectOverview project="project-viewer" sections={[
+  ["architecture", "Architecture", "Click through the system, box by box"],
+  ["decisions", "Decisions: you choose", "Make each call, then compare"],
+  ["stack", "Tech stack", "Every tool, why, and what lost"],
+  ["journey", "Journey", "What happened, session by session"],
+  ["records", "Original records", "ADRs, devlogs, roadmap, status"]
+]} />

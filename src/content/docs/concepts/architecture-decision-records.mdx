@@ -1,0 +1,48 @@
+---
+title: "Architecture Decision Records (ADRs)"
+description: "Writing down the decision, the options and the reasoning, so it can be understood, and changed, later."
+concept:
+  summary: "Writing down the decision, the options and the reasoning, so it can be understood, and changed, later."
+  projects: [road-risk, project-viewer, learning-app]
+  level: foundation
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+An **ADR** is a short document about one significant decision: the **context**, the **options considered**, the **decision**, the **reasoning** and the **consequences**. It's written when the decision is made, and **never rewritten**. If the decision changes, a new ADR *supersedes* the old one.
+
+Alongside ADRs these projects keep a **devlog** (what happened each session, including surprises and dead ends) and a **status file** (what exists now and the known issues).
+
+## Why it matters
+
+Code shows *what* was built, never *why*, or what else was considered. Months later, nobody remembers why DuckDB and not PostGIS, or why the key has two columns. Without the record, people either repeat old debates or undo good decisions by accident.
+
+With an AI agent it matters even more: the reasoning happens in a conversation that disappears. The ADR is where it survives.
+
+## How we used it
+
+- **20 ADRs** across the three projects; each one is a card on this site's Decisions pages.
+- **Supersede, don't rewrite**: projectViewer's ADR-0005 (show everything at once) was replaced by ADR-0006 (one level at a time) after the owner found it cluttered. Both stay, so the story is visible.
+- **An honest gap**: Road Risk's ADR-0004 says "squash merges", but the project actually used merge commits. The right fix is a new ADR that records the change.
+
+## The trade-off
+
+Writing takes 15–30 minutes per decision. Only significant or hard-to-reverse decisions get one. Small choices go in commit messages.
+
+## Check yourself
+
+<details class="check">
+<summary>Why never edit an accepted ADR?</summary>
+
+It records what was decided at the time, and why. Editing it erases the history. A new ADR that supersedes it shows both the old reasoning and what changed.
+
+</details>
+
+<details class="check">
+<summary>Which decisions deserve an ADR?</summary>
+
+Significant or hard-to-reverse ones: architecture, data models, tools, workflow. A variable name doesn't.
+
+</details>

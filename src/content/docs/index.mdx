@@ -1,6 +1,46 @@
 ---
 title: AI Driven Development Learning
+description: Learn AI-driven development through real projects. The reasoning, architecture and decisions behind them, not just the code.
 template: splash
+hero:
+  tagline: Learn how real software is designed and built with an AI agent. Focus on the reasoning, the architecture and the decisions, not the syntax.
+  actions:
+    - text: Start here
+      link: start/how-to-learn/
+      icon: right-arrow
+    - text: Make your first decision
+      link: road-risk/decisions/
+      variant: minimal
 ---
 
-Under construction.
+import ProjectCards from '../../components/ProjectCards.astro';
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Three projects, built for real
+
+Each project is a real repository, built with an AI coding agent under a professional workflow. Everything here comes from that work: every decision, tool and step.
+
+<ProjectCards />
+
+## How you learn here
+
+<CardGrid>
+  <Card title="Choose before you read" icon="puzzle">
+    Every decision is a card: the problem, the options and their trade-offs. **Pick one first**, then compare it with what was chosen and why. Your judgement improves where your picks differ.
+  </Card>
+  <Card title="Explore the architecture" icon="seti:pipeline">
+    Click any box in a system diagram to see what it is, why it exists and where it lives. Switch between the system today and the planned in-car target.
+  </Card>
+  <Card title="Every tool, with reasons" icon="setting">
+    The whole tech stack as cards: what each tool does, why it was chosen, where it's used, and the alternatives that lost.
+  </Card>
+  <Card title="Always true to the code" icon="approve-check">
+    The original records (ADRs, devlogs, status) are imported from the projects. The build **fails** if a tool or a decision has no explanation.
+  </Card>
+</CardGrid>
+
+## Where to begin
+
+1. **[How to learn here](start/how-to-learn/)**: five minutes on the method.
+2. **[What is AI-driven development?](start/ai-driven-development/)**: the workflow behind all three projects.
+3. **[Road Risk: decisions](road-risk/decisions/)**: make the decisions yourself.

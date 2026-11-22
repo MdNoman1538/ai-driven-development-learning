@@ -1,0 +1,642 @@
+# Decision cards: one per ADR. `chosen` is the 0-based index of the chosen option.
+# Each card is written so the reader can pick an option *before* seeing the answer.
+
+# ===================== Road Risk =====================
+- id: rr-0001
+  project: road-risk
+  ref: ADR-0001
+  title: The LLM is not the risk decision-maker
+  date: "2026-11-21"
+  status: Accepted
+  question: An in-car system must decide, many times a second, whether the road ahead is risky. Should a small LLM make that call?
+  context: >-
+    The project is also a learning path in modern LLMs, so it's tempting to let the LLM "decide". But the
+    decision needs tens of milliseconds, the same answer for the same input, calibrated meaning ("high"
+    = a measurable level), offline operation, and a safety argument (ISO 26262 / SOTIF).
+  options:
+    - name: The LLM decides from raw context
+      summary: Put location, weather and history in a prompt; let the model judge the risk.
+      pros: [Flexible, Impressive in a demo]
+      cons: [Hundreds of ms to seconds per answer, Non-deterministic and uncalibrated, Can hallucinate; very hard to test or certify]
+    - name: A statistical/ML model decides; the LLM explains and converses
+      summary: Deterministic code plus a calibrated model trigger alerts; the LLM works only where language is the task.
+      pros: [Fast, testable, calibrated, Alerts still work if the LLM fails, The LLM is used where it's strong]
+      cons: [Needs a real modelling track (Phases 2 and 4)]
+    - name: No LLM at all
+      summary: Keep the product purely statistical.
+      pros: [Simplest]
+      cons: [Loses explanations, Q&A and traffic-message understanding, Loses the learning goal]
+  chosen: 1
+  why:
+    - LLMs are good at language and bad at being fast, repeatable numeric decision-makers.
+    - Keeping them off the safety path keeps the system testable and certifiable; that's how production AI is built in safety-relevant domains.
+    - "Knowing where *not* to use an LLM is a core AI-engineering skill."
+  consequences:
+    - "The LLM never blocks or triggers an alert; a template explanation is the fallback."
+    - "LLM evals measure faithfulness: an explanation must never contradict the risk engine."
+  revisit: Only if on-device LLMs become fast and verifiable *and* a safety argument exists; even then they would add features, not replace the model.
+  lesson: Match the tool to the job's real requirements (latency, determinism, testability), not to what's exciting.
+
+- id: rr-0002
+  project: road-risk
+  ref: ADR-0002
+  title: Lighting from sun position instead of clock time
+  date: "2026-11-21"
+  status: Accepted
+  question: The product idea is time-sensitive risk, but the open crash data has no hour-of-day field. What do you do?
+  context: >-
+    All 12 yearly files were checked: only year, month and weekday exist. The data *does* record the
+    lighting at each crash: daylight, twilight, dark with streetlights, dark unlit.
+  options:
+    - name: Get hour-level data from a restricted source
+      summary: Apply for police or Statistics Finland research access.
+      pros: [Real clock times]
+      cons: [Slow to obtain, Not open; licensing unclear]
+    - name: Use the lighting field, and compute it live from the sun's position
+      summary: In the car, compute the sun's elevation from the clock and GPS and map it to the same four categories.
+      pros: [Lighting is the physical cause; the clock is a poor stand-in, Pure maths, so it works offline, Training data and live input match exactly]
+      cons: [Needs streetlight presence per segment, Exposure must be corrected (most winter driving is in the dark)]
+    - name: Ignore time effects
+      summary: Treat risk as constant over the day.
+      pros: [No extra work]
+      cons: [Loses the core product idea]
+  chosen: 1
+  why:
+    - "In Oulu on 21 December there are 4 hours of daylight, 2 of twilight and 18 of darkness: '15:00' means daylight in June and darkness in December."
+    - The lighting category captures the real cause directly, and the sun's position is the most reliable live input there is.
+    - "Same four categories in history and in the car: no training/serving skew."
+  consequences:
+    - Streetlight presence becomes a property of each road segment.
+    - Risk in the dark must be divided by the share of traffic in the dark (Phase 2).
+  revisit: If hour-level crash data becomes available, add it alongside lighting (for example for rush-hour effects).
+  lesson: When the data lacks the variable you wanted, ask what that variable was standing in for. The real cause may already be there.
+
+- id: rr-0003
+  project: road-risk
+  ref: ADR-0003
+  title: DuckDB as data factory; the car uses precomputed tiles
+  date: "2026-11-21"
+  status: Accepted
+  question: A risk lookup took 78 ms. The car must check 2 km of road ahead many times a second, offline. What should change?
+  context: >-
+    Measured: 78 ms per lookup, of which ~56 ms was opening a connection and loading the spatial
+    extension. The same SQL on one persistent connection: 12.5 ms. All crash coordinates in memory:
+    0.3 ms. An in-memory KD-tree: 0.004 ms.
+  options:
+    - name: Query the database live in the car for every GPS update
+      summary: Ship DuckDB to the car and run the risk query on demand.
+      pros: [Simple]
+      cons: [Heavy work at the worst moment, A database engine on the device, Slowest]
+    - name: Switch to another database (PostGIS, SpatiaLite)
+      summary: Look for a faster engine.
+      pros: [Familiar tools]
+      cons: [Doesn't fix the real problem; risk is still computed on demand]
+    - name: Split the system; precompute in the cloud, look up in the car
+      summary: DuckDB builds risk per road segment × condition offline; the car loads small tiles into memory and looks them up.
+      pros: [Microsecond lookups, Works offline, Each tool does the job it's good at]
+      cons: [Tiles go stale between rebuilds, A tile format and updates to design (Phase 8)]
+  chosen: 2
+  why:
+    - "The database wasn't slow; the design was. Most time went to reconnecting, the rest to recomputing something that changes once a year."
+    - "The data is small: all crash coordinates for Finland take 2.9 MB."
+    - DuckDB is excellent at its real job (offline analytics, joins, training data, building tiles).
+  consequences:
+    - "Phase 0 quick fix: one persistent connection (78 → 15 ms)."
+    - Risk becomes a table keyed by road segment × condition (Phases 1–2).
+    - "A demo later measured a precomputed grid lookup at 0.29 µs vs 24.7 ms for the query: about 85,000× faster."
+  revisit: If the model needs inputs that can't be bucketed in advance; even then only a small model runs live, never a query.
+  lesson: Performance usually comes from *when and where* work happens, not from tuning one query. Measure first, then change the architecture.
+
+- id: rr-0004
+  project: road-risk
+  ref: ADR-0004
+  title: GitHub Flow with small PRs and test-first fixes
+  date: "2026-11-21"
+  status: Accepted (merge method later changed in practice)
+  question: The code was committed straight to main, with no tests or CI. Most code will now be written by an AI agent. What workflow?
+  context: >-
+    One developer, deploying continuously to Render, wanting a portfolio that shows professional
+    practice, and code arriving faster than a person can verify it.
+  options:
+    - name: Keep committing to main
+      summary: No branches, no PRs.
+      pros: [Fastest]
+      cons: [No safety net, No review record, Not what employers expect]
+    - name: Git Flow
+      summary: develop, release and hotfix branches.
+      pros: [Structured releases]
+      cons: [Built for scheduled releases; too heavy for one person]
+    - name: Trunk-based with feature flags
+      summary: Tiny branches or direct commits, relying on strong tests.
+      pros: [Excellent for mature teams]
+      cons: [Needs a test suite that didn't exist yet]
+    - name: GitHub Flow
+      summary: main always works; every change via a short branch, a PR and CI.
+      pros: [Review and CI gating with the least ceremony, Matches continuous deployment]
+      cons: [A few extra minutes per change]
+  chosen: 3
+  why:
+    - The simplest workflow that still gives review, CI gating and a traceable history.
+    - Test-first bug fixes prove the test really detects the bug; a test written after the fix may pass for the wrong reason.
+    - "With AI-written code, verification has to set the pace, so review and tests matter more, not less."
+  consequences:
+    - Branch protection with required checks; 0 required approvals (GitHub won't let authors approve their own PR); the owner reads every diff.
+    - "Honest gap: the ADR says squash merges, but the project actually used merge commits (following projectViewer's ADR-0007). A superseding ADR should record that."
+  revisit: When more maintainers join, add required approvals and CODEOWNERS.
+  lesson: A workflow is a safety system. Choose the lightest one that still makes skipping verification impossible.
+
+- id: rr-0005
+  project: road-risk
+  ref: ADR-0005
+  title: Use an existing strong AI reviewer; fine-tune only after evals exist
+  date: "2026-11-21"
+  status: Accepted
+  question: Should you build or fine-tune your own small-model AI code reviewer now?
+  context: The project had about 10 commits, no labelled review data and no way to measure a reviewer's quality.
+  options:
+    - name: Fine-tune a small reviewer now
+      summary: Train a small Qwen model on review examples.
+      pros: [Exciting, Local]
+      cons: [No training data or eval set, Fine-tuning teaches style, not bug-finding judgement, A confident weak reviewer is worse than none]
+    - name: No AI review
+      summary: Human review only.
+      pros: [Nothing to build]
+      cons: [Loses a cheap, useful second opinion]
+    - name: An existing strong reviewer now, plus automatic checks, plus labels; fine-tune later against evals
+      summary: Run /code-review on PRs, mark findings right or wrong, turn rules into tests; build a planted-bug eval before any fine-tune.
+      pros: [Useful today, Builds a labelled dataset as a side effect, A later fine-tune can be measured]
+      cons: [Depends on an external reviewer for now]
+  chosen: 2
+  why:
+    - You can't improve what you can't measure. The eval set has to come before the model.
+    - Deterministic checks ("fitness functions") enforce rules forever at no cost.
+  consequences:
+    - "A human still reads every diff; AI review never replaces that."
+    - "In practice the reviewer found real bugs: 8 findings in PR #6, 9 in PR #8, all fixed test-first."
+  revisit: After Phase 6 (evals) and Phase 7 (LoRA), and only if a tuned model measurably approaches the strong reviewer.
+  lesson: Before training a model, build the test that would tell you whether it's any good.
+
+- id: rr-0006
+  project: road-risk
+  ref: ADR-0006
+  title: One job per top-level module
+  date: "2026-11-21"
+  status: Accepted
+  question: "`src/spatial/` held the ingestion pipeline and scripts but no spatial logic; `db.py` sat loose; a demo script looked like a test. How should the code be organised?"
+  context: Seen on the projectViewer map, "spatial" was the biggest block while doing something else entirely.
+  options:
+    - name: Keep the layout and document it
+      summary: Write down what each folder really contains.
+      pros: [No moves]
+      cons: [The structure keeps misleading people and tools]
+    - name: Layered folders
+      summary: presentation/, domain/, infrastructure/.
+      pros: [A well-known pattern]
+      cons: [Generic; hides what the product actually does]
+    - name: One folder per job
+      summary: core, ingestion, scoring, i18n, api, ui now; spatial, context, engine, llm when their code arrives.
+      pros: [The folder names say what the product does, Visible the same way in code and on the map]
+      cons: [Imports change; moves to make]
+  chosen: 2
+  why:
+    - A module named for its job tells you where things belong before you read any code.
+    - "One-way dependencies (api, ui → scoring → core, i18n) stop a change in the UI from breaking the engine."
+    - "No empty placeholder modules: a folder appears with its first real code."
+  consequences:
+    - "Paths are computed from `__file__` and guarded by tests: a wrong `parents[n]` silently points at the wrong folder."
+  revisit: If a module grows past one job, split it rather than adding sub-layers.
+  lesson: Structure is communication. If the map of your code misleads you, fix the structure, not the documentation.
+
+- id: rr-0007
+  project: road-risk
+  ref: ADR-0007
+  title: The database is a versioned release asset, pinned by a lock file
+  date: "2026-11-22"
+  status: Accepted
+  question: A 38 MB database file is committed to git, and Render needs it to run. Where should it live?
+  context: Git keeps every version forever, so each rebuild would add ~38 MB to every clone. The raw data isn't in git, so Render can't rebuild the database itself.
+  options:
+    - name: Keep it in git
+      summary: Change nothing.
+      pros: [Zero work]
+      cons: [The repo grows forever, No data version names]
+    - name: Git LFS
+      summary: git stores a pointer; the file lives in LFS storage.
+      pros: [Transparent to clones]
+      cons: [Small free quota spent by every build, Extra tooling on every machine]
+    - name: GitHub Release asset + lock file
+      summary: Each data version is a tagged release; a lock file pins URL + SHA-256; a small downloader verifies it.
+      pros: [Named, verifiable data versions, Free, no new accounts, Same idea as uv.lock]
+      cons: [One extra publishing step]
+    - name: Object storage (S3, R2)
+      summary: The industry choice at scale.
+      pros: [Scales, access control]
+      cons: [Account, credentials, a bill; too much for one file]
+  chosen: 2
+  why:
+    - The code names the exact bytes it expects, and the checksum proves it got them; a corrupt download fails loudly.
+    - Data versions get names, which model training (Phase 4) and tile updates (Phase 8) will need.
+    - The downloader never overwrites a different local database without --force.
+  consequences:
+    - "The 38 MB stays in old history: rewriting public history (force-push) would break every clone."
+    - The release must exist before CI runs, or the fetch fails with 404.
+  revisit: When data versions grow to hundreds of MB, need access control, or must reach cars; then object storage behind the same lock interface.
+  lesson: Treat data like dependencies. Pin it, version it, verify it.
+
+- id: rr-0008
+  project: road-risk
+  ref: ADR-0008
+  title: Key by (year, accident_id); missing is NULL; cleaning is code
+  date: "2026-11-22"
+  status: Accepted
+  question: You find one duplicated crash ID. Do you delete the duplicate?
+  context: >-
+    Profiling showed "missing" spelled 8 ways, heavy_vehicle in 3 encodings, -1 used as "no value"…
+    and the "duplicate" ID 9710903 was two *different* crashes: a fatal one in Joensuu in 2019 and a
+    property-damage one in Pieksämäki in 2020. Participant IDs repeat across years too.
+  options:
+    - name: Keep accident_id as the key; drop the duplicate
+      summary: Deduplicate and move on.
+      pros: [Simple]
+      cons: [Deletes a real fatal crash, Participant joins stay ambiguous]
+    - name: Make a synthetic key such as '2019-9710903'
+      summary: Build a new unique id.
+      pros: [Unique]
+      cons: [Hides the source ID; needs translating everywhere]
+    - name: Composite key (year, accident_id), missing as NULL, all cleaning in the pipeline
+      summary: Both parts are source values; participants carry their file's year; rules live in clean.py; the DB is always rebuilt from raw.
+      pros: [No real crash deleted, Joins are correct across years, Reproducible and auditable]
+      cons: [Every participant join must use both columns]
+  chosen: 2
+  why:
+    - "A naive DISTINCT would have deleted a fatal crash, and the cyclist filter was matching a 2020 crash to a 2019 cyclist."
+    - NULL is the "no value" every tool understands; a string such as 'Unknown' silently becomes a category in models.
+    - "Hand edits break the chain from raw files to the number shown to a driver; rebuild-from-raw keeps it."
+  consequences:
+    - Unusable rows go to ingest_rejects with a reason; each raw file's SHA-256 is logged.
+    - "An unseen spelling stops the build instead of being guessed."
+    - "Two builds from the same files give identical content fingerprints."
+  revisit: If the source publishes globally unique IDs, or data starts arriving as a stream.
+  lesson: Investigate before you clean. "Duplicates" and "outliers" are often real events your assumptions don't cover.
+
+# ===================== projectViewer =====================
+- id: pv-0001
+  project: project-viewer
+  ref: ADR-0001
+  title: A local service that projects subscribe to; recording is deterministic
+  date: "2026-11-21"
+  status: Accepted
+  question: You want to record every change to a project, by a human or by an AI agent, without touching the project or slowing anyone down. How?
+  context: The predecessor (PR World v5) only recorded PRs from its own simulation, which isn't how real development happens.
+  options:
+    - name: An LLM agent that watches and records
+      summary: Let an AI observe and describe the changes.
+      pros: [Rich descriptions]
+      cons: [Misses events, Adds latency, May describe changes that never happened]
+    - name: Git hooks in every repo
+      summary: Install hooks per repository.
+      pros: [Standard git feature]
+      cons: [Must be installed in every repo, Conflicts with pre-commit]
+    - name: A global git hooks path
+      summary: core.hooksPath for all repos.
+      pros: [One place]
+      cons: [Disables each repo's own hooks; pre-commit refuses to work with it]
+    - name: A local service + passive event sources
+      summary: Read the git reflog, watch files, and receive one global Claude Code hook; projects subscribe.
+      pros: [No changes to projects, Facts, not interpretations]
+      cons: [A background service to run]
+  chosen: 3
+  why:
+    - Recording must be factual. The reflog and file events are what actually happened; an LLM may only summarise them later.
+    - "Subscribed projects need no changes and no new dependencies."
+  consequences:
+    - "The hook must never hurt the developer: tiny payload, short timeout, silent failure, always exit 0."
+    - Prompts are stored locally only.
+  revisit: If teams need shared history (a server, authentication and a privacy review).
+  lesson: Record facts deterministically, and use AI only to interpret recorded facts, never to produce them.
+
+- id: pv-0002
+  project: project-viewer
+  ref: ADR-0002
+  title: A language-neutral world format with honest link certainty
+  date: "2026-11-21"
+  status: Accepted
+  question: The analyser can prove some links between functions, infer others, and only guess at the rest. How should the map show them?
+  context: Python is dynamic, so not every call can be resolved. A wrong link on an architecture map is worse than a missing one.
+  options:
+    - name: Draw every plausible link
+      summary: Include name-based guesses.
+      pros: [Looks complete]
+      cons: ["`con.close()` would link to the only project function named close: confidently wrong"]
+    - name: Draw only proven links
+      summary: Drop everything uncertain.
+      pros: [Never wrong]
+      cons: [Misses many real links]
+    - name: Tag each link proven / inferred / pattern; count what can't be resolved
+      summary: Show certainty visually; never present a guess as fact.
+      pros: [Honest and still useful, The unresolved rate is measurable]
+      cons: [Some real links are missing]
+  chosen: 2
+  why:
+    - "The map never presents a guess as fact. Opacity shows certainty."
+    - Unresolved calls are counted in the stats, not drawn, so the gap is visible.
+    - Neutral node and edge kinds let other languages plug in later.
+  consequences:
+    - "A '% linked' metric needed care: calls to builtins and libraries aren't misses."
+  revisit: If the unresolved rate stays high on real projects; then consider a precise indexer (SCIP, pyright).
+  lesson: A tool should tell you how sure it is. Calibrated uncertainty beats false confidence.
+
+- id: pv-0003
+  project: project-viewer
+  ref: ADR-0003
+  title: Two-pass analysis with a content-addressed cache
+  date: "2026-11-21"
+  status: Accepted
+  question: The map is rebuilt after every commit and every save. Re-analysing the whole project each time doesn't scale. What do you do?
+  context: v5 re-ran its full analysis per commit and stored ~1.7 MB of JSON each time.
+  options:
+    - name: Analyse everything every time
+      summary: Simple full rebuild.
+      pros: [Simplest]
+      cons: [Work proportional to the codebase, not the change]
+    - name: Track changed files with timestamps
+      summary: Re-parse files whose mtime changed.
+      pros: [Cheap check]
+      cons: [Breaks across branches, clones and checkouts]
+    - name: Pure per-file pass + a cache keyed by a hash of the content; a fast in-memory linking pass
+      summary: Pass 1 extracts facts per file (cached by sha256 of version + path + content); pass 2 links them.
+      pros: [Unchanged files are never parsed again, Works across commits, branches and repos, An analyser upgrade invalidates the cache automatically]
+      cons: [The cache grows; needs cleanup later]
+  chosen: 2
+  why:
+    - A commit touches a few files, so work becomes proportional to the change.
+    - "The key includes the analyser version: improving the analyser invalidates old results by itself."
+  consequences:
+    - "Measured on pandas (1,440 files): 4.3 s cold (parallel), 1.6 s warm, 1.65 s after editing one file."
+    - Pass 1 must stay pure; anything cross-file belongs to pass 2.
+  revisit: When the warm path (re-reading every cache entry) dominates; then keep facts in memory in the service.
+  lesson: Make expensive work a pure function of its input, then cache by a hash of that input.
+
+- id: pv-0004
+  project: project-viewer
+  ref: ADR-0004
+  title: GitHub Flow, small PRs, human review of AI-written code
+  date: "2026-11-21"
+  status: Accepted (merge method superseded by ADR-0007)
+  question: The predecessor had no version control (versions were zip files). The new tool is public and largely AI-written. What workflow?
+  context: One maintainer, public repo, code written by an agent.
+  options:
+    - name: Git Flow
+      summary: develop and release branches.
+      pros: [Structured releases]
+      cons: [Too heavy for one maintainer]
+    - name: Trunk-based
+      summary: Commit to main with strong tests.
+      pros: [Fast]
+      cons: [Needs a strong test suite first]
+    - name: GitHub Flow
+      summary: main always works; branch, PR, CI, review.
+      pros: [Review + CI with the least ceremony]
+      cons: [A few minutes per change]
+  chosen: 2
+  why:
+    - "With AI-written code, review and tests are the bottleneck on purpose: code arrives faster than it can be verified."
+    - Agent rules live in CLAUDE.md, versioned and visible to every tool.
+  consequences:
+    - The only commit made directly on main is the initial scaffold.
+  revisit: When more maintainers join (required approvals, CODEOWNERS).
+  lesson: Make the slow, careful step the one that sets the pace.
+
+- id: pv-0005
+  project: project-viewer
+  ref: ADR-0005
+  title: A nested treemap shown as a 2.5D city
+  date: "2026-11-21"
+  status: Superseded by ADR-0006
+  question: The old viewer used a hard-coded grid of modules for one demo project. The new one must lay out *any* project. Which layout?
+  context: It must stay readable from 20 to 1,500+ files, and the owner liked v5's 2.5D look with taller blocks for bigger modules.
+  options:
+    - name: Port v5's viewer and generalise it
+      summary: Reuse the old code.
+      pros: [Familiar]
+      cons: [The hard-coded grid was its core; most of it would be rewritten anyway]
+    - name: A graph layout
+      summary: Nodes and edges (ELK, force-directed).
+      pros: [Shows links well]
+      cons: [Hides size and hierarchy, Jumps around as code changes]
+    - name: A nested treemap as a 2.5D city
+      summary: Packages contain files contain functions; area and height by size.
+      pros: [No configuration, Hierarchy and size at once]
+      cons: [Everything at once can be a lot]
+  chosen: 2
+  why:
+    - A treemap needs no project-specific setup and shows hierarchy and size together.
+  consequences:
+    - "After using it, the owner found it cluttered, which led to ADR-0006."
+  revisit: Superseded when real use showed the clutter.
+  lesson: A design can be reasonable on paper and still fail in use. Ship, watch, and let feedback supersede it, recorded as a new decision.
+
+- id: pv-0006
+  project: project-viewer
+  ref: ADR-0006
+  title: One folder level at a time; blocks sized by number of functions
+  date: "2026-11-21"
+  status: Accepted
+  question: The everything-at-once map was cluttered. The owner wanted modules only, folders as blocks, and size by "how much it does". What design?
+  context: "Feedback after real use: too much on screen, hard to navigate; `src/` shouldn't count as a module."
+  options:
+    - name: Keep the full treemap, add filters
+      summary: Let users hide levels.
+      pros: [One view]
+      cons: [Still starts cluttered]
+    - name: One level at a time, sized by function count
+      summary: Show only the children of the current focus; click to go in, Backspace to go up.
+      pros: [Progressive disclosure, Function count measures what a module does, Answers "which modules depend on which?"]
+      cons: [Some navigation needed]
+  chosen: 1
+  why:
+    - "People compare roughly 5–15 things at once, not hundreds: overview first, detail on demand."
+    - Lines of code count blank lines, comments and long SQL strings; functions count behaviour.
+    - "`src/` is transparent: its contents are the real modules."
+  consequences:
+    - "The map is only as good as the project's folder structure, which makes a messy structure visible (it led to Road Risk's ADR-0006)."
+  revisit: If projects with very deep or flat structures need another view.
+  lesson: Design for how many things a person can actually compare at once.
+
+- id: pv-0007
+  project: project-viewer
+  ref: ADR-0007
+  title: Merge commits keep the change notes
+  date: "2026-11-21"
+  status: Accepted
+  question: Every commit carries `Changes:` notes that the viewer shows on the code. How should PRs be merged into main?
+  context: The original workflow said squash merges, which fold a PR's 5–15 commits into one.
+  options:
+    - name: Keep squash merges
+      summary: One commit per PR.
+      pros: [Short history]
+      cons: [Per-commit notes and the step-by-step story are lost]
+    - name: Rebase and merge
+      summary: Replay the commits onto main.
+      pros: [Every commit kept; no merge commits]
+      cons: [Rewrites commit IDs, so links break]
+    - name: Merge commit
+      summary: Keep every commit unchanged, plus one "PR merged" commit.
+      pros: [Full history with notes, Stacked PRs merge cleanly]
+      cons: [Noisier log (use --first-parent)]
+  chosen: 2
+  why:
+    - The notes are the "why" behind each change; losing them defeats the tool's purpose.
+    - "Safety net: the parser reads every `Changes:` section, so notes survive a squash anyway."
+  consequences:
+    - "Both projects merge with merge commits; `git log --first-parent main` gives one line per PR."
+  revisit: If the history becomes too noisy for the team.
+  lesson: When a new practice (change notes) appears, re-check older decisions it depends on, and supersede them explicitly.
+
+# ===================== Learning app =====================
+- id: la-0001
+  project: learning-app
+  ref: ADR-0001
+  title: A static site with Astro + Starlight, interactive only where it teaches
+  date: "2026-11-22"
+  status: Accepted
+  question: You want a good-looking, interactive, public learning site with almost no maintenance. What do you build it with?
+  context: It's mostly content, it must look good, have a few rich interactive pieces, be free to host, and stay maintainable by a small team (one person plus an AI agent).
+  options:
+    - name: MkDocs
+      summary: Python docs generator.
+      pros: [Simplest]
+      cons: [Hard to make interactive and good-looking]
+    - name: Docusaurus
+      summary: React-based docs framework.
+      pros: [Mature]
+      cons: [Ships React on every page; plainer design]
+    - name: Next.js
+      summary: A full web-app framework.
+      pros: [Anything is possible]
+      cons: [Needs a server or paid hosting, More to maintain]
+    - name: Astro + Starlight + React islands
+      summary: Static HTML for content, React only for the interactive explorers.
+      pros: [Polished design, search and dark mode built in, Free hosting on GitHub Pages, Typed content collections]
+      cons: [No server, so quiz progress lives in the browser]
+  chosen: 3
+  why:
+    - Content should be plain, fast HTML; interactivity is added only where it teaches.
+    - "Static hosting is free and has nothing to go down."
+    - Typed content collections check every entry at build time.
+  consequences:
+    - "Package versions pinned exactly, each at least two weeks old (Astro 7.4.7, Starlight 0.42.10, React 19.3.1)."
+    - Quiz progress (Phase L3) is stored in the visitor's browser.
+  revisit: If the site needs accounts, shared progress or server-side features.
+  lesson: Choose the least powerful tool that does the job well. Power you don't need is maintenance you pay for.
+
+- id: la-0002
+  project: learning-app
+  ref: ADR-0002
+  title: Two layers, imported records plus a typed teaching layer
+  date: "2026-11-22"
+  status: Accepted
+  question: The projects already have ADRs, devlogs and status files. How does the site cover "everything so far" without drifting from the truth?
+  context: Hand-written documentation goes stale; raw records alone don't teach.
+  options:
+    - name: Write everything by hand
+      summary: Retell each project in the site.
+      pros: [Full control over teaching]
+      cons: [Drifts from the projects; double work]
+    - name: Only import the records
+      summary: Publish the ADRs and devlogs as they are.
+      pros: [Always accurate]
+      cons: [Records aren't lessons; no "pick first", no explorers]
+    - name: Both, kept separate
+      summary: A sync script imports records unchanged; a teaching layer (decision cards, architecture, tools, concepts) is structured data with schemas.
+      pros: [History can't drift, Teaching is consistent and checkable]
+      cons: [Two kinds of content to keep in step]
+  chosen: 2
+  why:
+    - Records are evidence; the teaching layer is interpretation. Keeping them apart keeps both honest.
+    - Structured data lets one source feed several views (cards, maps, timelines, later quizzes).
+  consequences:
+    - "Every imported page says where it came from and at which commit."
+  revisit: If the teaching layer starts to repeat the records instead of explaining them.
+  lesson: Separate evidence from interpretation, and link one to the other.
+
+- id: la-0003
+  project: learning-app
+  ref: ADR-0003
+  title: The build fails when an explanation is missing
+  date: "2026-11-22"
+  status: Accepted
+  question: How do you make sure the site keeps up as the projects add tools and decisions?
+  context: Good intentions don't keep documentation current; checks do.
+  options:
+    - name: Rely on discipline
+      summary: Remember to update the site.
+      pros: [No tooling]
+      cons: [Fails the first busy week]
+    - name: A coverage check in CI
+      summary: Every dependency must be explained by a tool card and every ADR by a decision card, or the build fails.
+      pros: [A gap becomes a red build, The same idea as test coverage]
+      cons: [Content is required before a deploy]
+  chosen: 1
+  why:
+    - Turning a habit into a failing check is the most reliable way to keep a rule.
+    - "Combined with a rule in each project's CLAUDE.md: a change that adds a tool or decision updates this site too."
+  consequences:
+    - The sync reads each project's main branch; what's merged is what's taught.
+  revisit: If the check blocks too often for trivial packages; then allow an explicit "not explained" list.
+  lesson: If a rule matters, make breaking it fail a build.
+
+- id: la-0004
+  project: learning-app
+  ref: ADR-0004
+  title: Public content rules enforced by the sync
+  date: "2026-11-22"
+  status: Accepted
+  question: The site is public and imports text from other repos. How do you make sure nothing private leaks?
+  context: Records can contain local paths, emails or details that shouldn't be published.
+  options:
+    - name: Review by eye
+      summary: Check before each publish.
+      pros: [No tooling]
+      cons: [People miss things, especially in bulk imports]
+    - name: A guard in the importer
+      summary: The sync refuses any record containing a home-directory path or an email address.
+      pros: [Automatic, every time, Fix it at the source, not in the copy]
+      cons: [Patterns can't catch everything; review still matters]
+  chosen: 1
+  why:
+    - Leaks happen in bulk operations nobody reads line by line.
+  consequences:
+    - Only public repositories are synced, from their main branch.
+  revisit: When new kinds of sensitive data appear in records.
+  lesson: Put privacy checks where data crosses a boundary, and make them fail loudly.
+
+- id: la-0005
+  project: learning-app
+  ref: ADR-0005
+  title: Pick first, then reveal
+  date: "2026-11-22"
+  status: Accepted
+  question: The owner learns reasoning and decision-making, not coding. How should decisions be presented?
+  context: Reading a summary afterwards is the least effective way to learn; retrieving and committing to an answer is far more effective.
+  options:
+    - name: Plain pages
+      summary: Explain each decision.
+      pros: [Simple]
+      cons: [Passive reading; little sticks]
+    - name: Quizzes only, later
+      summary: Test knowledge at the end.
+      pros: [Measures learning]
+      cons: [Nothing active until then]
+    - name: Decision cards where you choose first
+      summary: See the problem and options, commit to a choice, then compare with what was decided and why.
+      pros: [Active from day one, Trains judgement, not memory, Your picks prepare the later quizzes]
+      cons: [Takes a few more seconds per decision]
+  chosen: 2
+  why:
+    - Committing to a prediction before seeing the answer makes the reasoning memorable (the "generation effect").
+    - Comparing your pick with the real decision shows where your judgement differs, which is the useful part.
+  consequences:
+    - Picks are saved in the visitor's browser only.
+  revisit: When quizzes (L3) arrive; picks can then feed spaced repetition.
+  lesson: To learn judgement, practise making the judgement, then check it.

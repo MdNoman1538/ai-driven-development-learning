@@ -1,0 +1,51 @@
+- { id: adr, term: ADR (Architecture Decision Record), definition: "A short document recording one significant decision: the context, the options, the choice and why. Never rewritten; replaced by a new ADR if the decision changes.", concept: architecture-decision-records }
+- { id: ast, term: AST (abstract syntax tree), definition: "A program's structure as a tree (modules, functions, calls), produced by a parser. Lets a tool read code without running it.", concept: static-analysis-and-code-maps }
+- { id: atomic-write, term: Atomic write, definition: "Write to a side file, then rename it into place in one step, so readers see either the old file or the complete new one, never half of it.", concept: data-versioning }
+- { id: branch-protection, term: Branch protection, definition: "GitHub rules on a branch (here main): changes only through PRs, required CI checks, branch must be up to date.", concept: git-and-github-flow }
+- { id: characterization-test, term: Characterization test, definition: "A test that pins today's output (for example Oulu = 95 crashes, 57.8, HIGH) so a refactor can't change behaviour by accident.", concept: testing-strategy }
+- { id: checksum, term: Checksum (SHA-256), definition: "A short fingerprint computed from a file's bytes. Any change, even one bit, gives a different fingerprint, so it proves a download is the exact file expected.", concept: data-versioning }
+- { id: ci, term: CI (continuous integration), definition: "Running the checks (lint, tests, build) automatically on a clean machine for every change.", concept: continuous-integration }
+- { id: claude-md, term: CLAUDE.md, definition: "The file of rules an AI coding agent follows in a repository: workflow, design rules, commands. Versioned like code.", concept: ai-driven-development }
+- { id: composite-key, term: Composite key, definition: "A unique identifier made of several columns together, such as (year, accident_id), used when no single column is unique.", concept: data-pipelines-and-cleaning }
+- { id: content-addressed, term: Content-addressed cache, definition: "A cache whose key is a hash of the input's content: same content, same key, wherever it came from.", concept: caching-by-content }
+- { id: conventional-commits, term: Conventional Commits, definition: "A commit-message convention: type(scope): summary (feat, fix, docs, chore…). Makes history readable and machine-parsable.", concept: git-and-github-flow }
+- { id: coverage-check, term: Coverage check, definition: "On this site: a build step that fails if a project uses a tool or has a decision with no explanation.", concept: static-sites-and-content-as-data }
+- { id: definition-of-done, term: Definition of Done, definition: "The checklist a change must meet to count as finished: tests, CI green, docs updated, diff read by a human.", concept: ai-driven-development }
+- { id: devlog, term: Devlog, definition: "A dated log of each session: what was done, the reasoning, the surprises and the dead ends.", concept: architecture-decision-records }
+- { id: duckdb-term, term: DuckDB, definition: "An analytics database that runs inside the program, with no server; fast for scans, joins and aggregations." }
+- { id: empirical-bayes, term: Empirical Bayes, definition: "A statistical method that pulls a place's crash rate towards the average for similar places, more strongly when it has little data, so one unlucky crash doesn't make a quiet road look deadly.", concept: risk-vs-counts }
+- { id: electronic-horizon, term: Electronic horizon, definition: "The stretch of road the car will reach next (here about 2 km), computed from position, direction and the road network.", concept: performance-by-architecture }
+- { id: epsg-3067, term: EPSG:3067 (ETRS-TM35FIN), definition: "Finland's metric coordinate system: positions in metres, so distances are simple arithmetic. GPS uses WGS84 degrees instead.", concept: coordinate-systems-and-spatial-indexes }
+- { id: exposure, term: Exposure, definition: "How much opportunity there was for crashes, such as traffic volume. Risk = crashes relative to exposure, never raw counts.", concept: risk-vs-counts }
+- { id: fingerprint, term: Content fingerprint, definition: "A hash of a table's contents in a fixed order. Equal fingerprints across builds prove the build is reproducible.", concept: data-pipelines-and-cleaning }
+- { id: fitness-function, term: Architecture fitness function, definition: "A test that enforces an architecture rule automatically, such as 'no LLM imports in the scoring module'.", concept: modular-architecture }
+- { id: github-flow, term: GitHub Flow, definition: "main always works; every change goes through a short-lived branch, a pull request and CI.", concept: git-and-github-flow }
+- { id: hook, term: Hook, definition: "A command a tool runs automatically at a certain moment (before a commit, after an AI edit).", concept: ai-driven-development }
+- { id: idempotent, term: Idempotent, definition: "Doing it twice has the same effect as doing it once, like the database fetch, which does nothing if the file already matches." }
+- { id: integration-test, term: Integration test, definition: "A test that runs several parts together with real dependencies, such as the engine against the real database.", concept: testing-strategy }
+- { id: island, term: Island (Astro), definition: "An interactive component inside an otherwise static HTML page; only the island loads JavaScript.", concept: static-sites-and-content-as-data }
+- { id: lint, term: Linter, definition: "A tool that reads code and flags likely bugs and bad patterns without running it (here ruff).", concept: continuous-integration }
+- { id: lock-file, term: Lock file, definition: "A file recording the exact version of every dependency (uv.lock, package-lock.json), so every install is identical.", concept: reproducible-environments }
+- { id: lora, term: LoRA, definition: "A cheap way to fine-tune a large model by training small add-on matrices instead of all its weights. Planned for consistent alert wording." }
+- { id: map-matching, term: Map-matching, definition: "Working out which road (and direction) a GPS point or crash belongs to.", concept: coordinate-systems-and-spatial-indexes }
+- { id: merge-commit, term: Merge commit, definition: "A commit that joins a branch into main while keeping all of the branch's commits unchanged.", concept: git-and-github-flow }
+- { id: null-value, term: "NULL", definition: "The database's 'no value'. Different from any string such as 'Unknown', which tools would treat as a real category.", concept: data-pipelines-and-cleaning }
+- { id: onnx, term: ONNX, definition: "A portable file format for trained ML models, runnable fast on many devices without the training framework." }
+- { id: pr, term: Pull request (PR), definition: "A proposed change on a branch, with its diff, discussion and CI results, merged when reviewed and green.", concept: git-and-github-flow }
+- { id: precompute, term: Precompute, definition: "Doing expensive work ahead of time and storing the result, so the moment that matters is a lookup.", concept: performance-by-architecture }
+- { id: profiling, term: Profiling, definition: "Measuring where a program actually spends its time, instead of guessing.", concept: measure-dont-guess }
+- { id: progressive-disclosure, term: Progressive disclosure, definition: "Show the overview first and the detail on demand, as projectViewer shows one folder level at a time." }
+- { id: quarantine, term: Quarantine (rejects), definition: "Keeping unusable rows in a separate table with a reason, instead of deleting them silently.", concept: data-pipelines-and-cleaning }
+- { id: rag, term: RAG (retrieval-augmented generation), definition: "Giving an LLM relevant documents found by search, so it answers from sources instead of memory." }
+- { id: release-asset, term: Release asset, definition: "A file attached to a tagged GitHub Release; here each database version.", concept: data-versioning }
+- { id: reproducible, term: Reproducible, definition: "Same inputs plus same code give the same output, every time and on every machine.", concept: reproducible-environments }
+- { id: rtree, term: R-tree, definition: "A spatial index that groups nearby shapes into boxes, so 'what's near this point?' checks a few boxes instead of every row.", concept: coordinate-systems-and-spatial-indexes }
+- { id: sentinel, term: Sentinel value, definition: "A fake value standing for 'no value', such as -1 for an unknown speed limit. Dangerous, because it looks like data.", concept: data-pipelines-and-cleaning }
+- { id: snapshot-test, term: Snapshot comparison, definition: "Saving a program's full output before a change and comparing it after, to prove nothing changed unintentionally.", concept: testing-strategy }
+- { id: sotif, term: ISO 26262 / SOTIF, definition: "Automotive safety standards: functional safety, and the safety of the intended functionality. They make free-text LLM output hard to certify.", concept: llm-where-and-where-not }
+- { id: squash, term: Squash merge, definition: "Combining all of a branch's commits into one when merging. Shorter history, but per-commit messages are lost.", concept: git-and-github-flow }
+- { id: static-site, term: Static site, definition: "A website made of ready-built HTML files: no server code runs when someone visits.", concept: static-sites-and-content-as-data }
+- { id: test-first, term: Test-first bug fix, definition: "Write a test that fails because of the bug, see it fail, then fix the code until it passes.", concept: testing-strategy }
+- { id: training-serving-skew, term: Training/serving skew, definition: "When a model's inputs in production differ from those it was trained on, so it behaves differently than tested.", concept: llm-where-and-where-not }
+- { id: wgs84, term: WGS84, definition: "The GPS coordinate system: latitude and longitude in degrees.", concept: coordinate-systems-and-spatial-indexes }
+- { id: zod, term: zod schema, definition: "A TypeScript description of what data must look like, checked at build time on this site.", concept: static-sites-and-content-as-data }

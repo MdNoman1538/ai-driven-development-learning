@@ -1,0 +1,50 @@
+---
+title: "Modular architecture"
+description: "One job per module, dependencies pointing one way, and tests that enforce the structure."
+concept:
+  summary: "One job per module, dependencies pointing one way, and tests that enforce the structure."
+  projects: [road-risk, project-viewer]
+  level: core
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+A **module** is a folder of code with one responsibility. Good modular architecture means each module has **one job**, is **named for that job**, and **dependencies point one way**: higher-level parts use lower-level parts, never the reverse.
+
+```
+   ui ─────┐
+           ├──► scoring ──► core (database)
+   api ────┘        └─────► i18n (translations)
+```
+
+## Why it matters
+
+When the folders say what the product does, you know where a change belongs before you read any code. One-way dependencies mean a change to the dashboard can't break the risk engine.
+
+## How we used it
+
+Road Risk's code had grown by history: `spatial/` held the ingestion pipeline and scripts but no spatial code, and a demo script looked like a test. Seen on the projectViewer map, "spatial" was the biggest block while doing something else entirely. ADR-0006 reorganised it into `core`, `ingestion`, `scoring`, `i18n`, `api` and `ui`, with these rules:
+- **No empty placeholder modules**: `spatial/` returns in Phase 1 with real geometry code.
+- **Architecture fitness functions**: tests that enforce structure, such as checking that every project path resolves to the right folder. Planned: a test that `scoring` never imports an LLM library (ADR-0001).
+
+## The trade-off
+
+Moving code changes imports and costs one careful PR. Not moving it means everyone (people, tools, the AI agent) keeps being misled by the structure.
+
+## Check yourself
+
+<details class="check">
+<summary>Why not use layered folders like presentation/, domain/, infrastructure/?</summary>
+
+They're generic: they say how the code is organised technically, not what the product does. Job-named modules make the product's capabilities visible.
+
+</details>
+
+<details class="check">
+<summary>What is an architecture fitness function?</summary>
+
+An automated test that checks a structural rule, for example that a module never imports another one, so the rule is enforced on every change instead of remembered.
+
+</details>

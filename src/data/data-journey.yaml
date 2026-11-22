@@ -1,0 +1,90 @@
+# The path of one crash record through Road Risk, step by step.
+- id: "01-raw"
+  title: A row in a raw CSV
+  stage: Source
+  happens: >-
+    Väylävirasto publishes one file of crashes per year. The 2014–21 files and the 2022+ files have
+    different column names (Onnett_id vs OnnettomuusID, Kk vs Kuukausi), and three different text
+    encodings, including UTF-16 for 2025.
+  why: Real data is messy. The pipeline must handle every format without anyone editing the files.
+  where: data/raw/ (not in git; anyone can download it)
+  before: "9710903;2019;10;Kuolemaan johtanut;40;Ei arvoa;päivänvalo;…;kumoonajo  ajoradalla ;…;on;640000;6945000"
+
+- id: "02-read"
+  title: Read every value as text
+  stage: Ingestion
+  happens: >-
+    The pipeline detects each file's encoding and delimiter, then reads every column as text, with
+    strict parsing: a malformed row stops the build instead of disappearing.
+  why: >-
+    If one side of a join guesses "number" and the other keeps "text", an ID like 0123 becomes 123 and
+    no longer matches. Reading everything as text first, then converting deliberately, avoids that.
+  where: src/ingestion/ingest_all.py (read_csv … all_varchar=true, ignore_errors=false)
+
+- id: "03-clean"
+  title: Apply the cleaning rules
+  stage: Ingestion
+  happens: >-
+    Each column goes through one rule, written once in SQL: whitespace is normalised, eight spellings
+    of "missing" become NULL, "on"/"true"/"kyllä" become TRUE, and -1 sentinels become NULL.
+  why: >-
+    One rule, one place, for both formats, so the formats can't drift apart. And an unseen spelling
+    stops the build instead of being guessed.
+  where: src/ingestion/clean.py
+  before: "surface='Ei arvoa', accident_type='kumoonajo  ajoradalla ', heavy='on', speed=-1"
+  after: "surface=NULL, accident_type='kumoonajo ajoradalla', heavy=TRUE, speed=NULL"
+
+- id: "04-validate"
+  title: Quarantine what can't be used
+  stage: Ingestion
+  happens: >-
+    Crashes without coordinates (173) go to ingest_rejects with the reason 'no_coordinates'; their
+    participants (290) go there too as 'crash_not_loaded'. Each raw file is logged with its SHA-256
+    and its read / loaded / rejected counts.
+  why: Nothing is dropped silently. Losses are counted and auditable, and the raw inputs can be verified.
+  where: ingest_rejects, ingest_files tables
+  after: "read 180,907 → loaded 180,734 + rejected 173 (adds up exactly)"
+
+- id: "05-store"
+  title: Store, index, fingerprint, publish
+  stage: Warehouse
+  happens: >-
+    Crashes land in DuckDB keyed by (year, accident_id), because the source reuses IDs across years,
+    with an R-tree spatial index. The build is atomic: written to a side file, then renamed into
+    place. Content fingerprints prove two builds are identical. The result is published as a
+    versioned release.
+  why: Reproducible, verifiable data. The number shown to a driver can be traced back to exact files and code.
+  where: data/processed/road_risk.duckdb → release data-2026-11-22
+
+- id: "06-score"
+  title: Score a location
+  stage: Engine
+  happens: >-
+    For a point, the engine finds crashes within the radius (using the index), weights each by
+    severity × recency (5-year half-life, counted back from the latest year in the data) × distance,
+    and turns the sum into a 0–100 score and a tier.
+  why: >-
+    A simple, transparent baseline. It counts crashes but not exposure (traffic), which is why
+    Phases 1–2 replace it with segment-level, exposure-normalised risk.
+  where: src/scoring/risk_engine.py
+  after: "Oulu, 250 m: 95 crashes → 57.8 / 100, HIGH"
+
+- id: "07-serve"
+  title: Answer the user
+  stage: Output
+  happens: >-
+    The API returns the profile as JSON and the dashboard shows it on a map. Finnish values are
+    translated only here; NULL reads "Not recorded". If anything breaks, the client gets only an
+    error id, while the details go to the server log.
+  why: The data stays canonical; presentation is a separate concern; internals never leak.
+  where: src/api/main.py, src/ui/app.py, src/i18n/translator.py
+
+- id: "08-future"
+  title: "Next: precomputed tiles in the car"
+  stage: Future
+  happens: >-
+    Instead of querying per request, the cloud will precompute risk per road segment × condition, and
+    the car will look it up in memory. A prototype grid lookup took 0.29 µs, against 24.7 ms for the
+    query.
+  why: Do the heavy work once, offline; make the safety-critical path a lookup.
+  where: Phases 1–2 and 8 (ADR-0003)

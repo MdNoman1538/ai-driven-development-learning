@@ -1,0 +1,114 @@
+# Sessions, oldest first. Details live in each project's devlog (Records).
+- id: s1-review-and-plan
+  date: "2026-11-21"
+  projects: [road-risk]
+  title: Read the existing app, measure it, plan the product
+  summary: >-
+    The starting point was a working crash-data dashboard (DuckDB, FastAPI, Streamlit, deployed on
+    Render) with no tests, no CI and code committed straight to main. The goal became an in-car,
+    offline, context-aware warning system.
+  did:
+    - Reviewed the whole repository and the 12 yearly data files
+    - Discovered there's no time-of-day field in the open data; lighting is recorded instead
+    - "Benchmarked risk lookups: 78 ms, mostly from reconnecting"
+    - Wrote the roadmap (Phases 0–10), the status file and the first three ADRs
+  decided: [rr-0001, rr-0002, rr-0003]
+  concepts: [llm-where-and-where-not, performance-by-architecture, architecture-decision-records]
+  lesson: Read and measure before planning. Two of the three big decisions came from facts found in the data and in a benchmark.
+
+- id: s2-phase0-workflow
+  date: "2026-11-21"
+  projects: [road-risk]
+  title: Engineering foundations and a test-first bug fix
+  summary: >-
+    A professional workflow went in, and the deployed API's hidden bug was fixed test-first: the spatial
+    extension was loaded but never installed, so the API failed on any fresh server.
+  did:
+    - "uv + lock file, ruff, pytest, pre-commit, GitHub Actions CI"
+    - Reproduced the Render failure with an empty extension directory before fixing it
+    - "One persistent connection: 78 → 15 ms"
+    - "Reorganised the code into one-job modules (core, ingestion, scoring, i18n, api, ui)"
+    - Decided how AI code review fits in
+  decided: [rr-0004, rr-0005, rr-0006]
+  concepts: [git-and-github-flow, continuous-integration, testing-strategy, reproducible-environments, modular-architecture, ai-code-review]
+  lesson: A bug fix is only proven when a test fails before it and passes after it.
+
+- id: s3-project-viewer
+  date: "2026-11-21"
+  projects: [project-viewer]
+  title: Building projectViewer from the PR World prototype
+  summary: >-
+    A new public tool, successor to the PR World v5 prototype: a Python code analyser, a 2.5D map in
+    the browser, and change sets with notes. The first map design was replaced after real use.
+  did:
+    - "Python cartographer: two-pass analysis with a content-addressed cache (pandas: 4.3 s cold, 1.6 s warm)"
+    - Honest link certainty (proven / inferred / pattern)
+    - A 2.5D treemap city, then redesigned to one folder level at a time after feedback
+    - "Live and per-commit changes, impact, change notes, the Show tour, several projects"
+    - "A code review found 6 issues; all fixed with tests"
+  decided: [pv-0001, pv-0002, pv-0003, pv-0004, pv-0005, pv-0006]
+  concepts: [static-analysis-and-code-maps, caching-by-content, ai-code-review]
+  lesson: Design, ship, watch it being used, then supersede the design with a recorded decision.
+
+- id: s4-follow-the-ai
+  date: "2026-11-21"
+  projects: [project-viewer]
+  title: Change notes that survive, and watching the AI live
+  summary: >-
+    Merge commits replaced squash merges so per-commit notes survive, and a Claude Code hook made the
+    viewer a live window on the AI's work.
+  did:
+    - Notes parser reads every Changes section (a safety net for squashes)
+    - "A hook for edits, prompts and stops, guarded so it can never block the agent"
+  decided: [pv-0007]
+  concepts: [git-and-github-flow]
+  lesson: Any integration with a tool you depend on must fail safely. "Can this ever block me?" is the first question.
+
+- id: s5-merge-and-harden
+  date: "2026-11-22"
+  projects: [road-risk, project-viewer]
+  title: Merging the stack, protecting main, hardening the API
+  summary: >-
+    Six stacked PRs merged in order with merge commits; both main branches protected. Then two
+    Road Risk fixes, each improved by AI code review.
+  did:
+    - "Branch protection: required checks, branches must be up to date, 0 approvals"
+    - "Internal errors no longer leak to clients (one handler, an error id)"
+    - "Reference year read from the data; honest field names; Finnish labels (API 2.0.0)"
+    - "Code review found that 'risk as of 2018' still counted 2019–2025 crashes, at full weight"
+    - "Profiling corrected a wrong diagnosis: the SQL query, not Python, was the slow part"
+  concepts: [continuous-integration, api-design-and-errors, measure-dont-guess, ai-code-review]
+  lesson: A performance claim without a profile is a guess, even when it was written down confidently.
+
+- id: s6-data
+  date: "2026-11-22"
+  projects: [road-risk]
+  title: The database leaves git; cleaning becomes code
+  summary: >-
+    The database became a versioned, checksum-pinned release. The data was cleaned by code, never by
+    hand, and rebuilt reproducibly from the raw files.
+  did:
+    - "Release assets + a lock file; CI and Render download and verify the database"
+    - "Investigation: 8 spellings of missing, 3 encodings of heavy_vehicle, a 'duplicate' that was two crashes"
+    - "Key (year, accident_id); missing → NULL; rejected rows quarantined; raw files checksummed"
+    - "Three builds, identical content fingerprints; every score unchanged, breakdowns now correct"
+    - "A prototype showed precomputed tiles: 0.29 µs vs 24.7 ms"
+  decided: [rr-0007, rr-0008]
+  concepts: [data-pipelines-and-cleaning, data-versioning, coordinate-systems-and-spatial-indexes, risk-vs-counts, performance-by-architecture]
+  lesson: Investigate before cleaning. The "duplicate" would have deleted a fatal crash.
+
+- id: s7-learning-app
+  date: "2026-11-22"
+  projects: [learning-app]
+  title: Building this learning site
+  summary: >-
+    The owner wanted to learn reasoning, architecture and decisions, not code, so the workflow
+    changed to "do less, learn more", and this site was built to hold it.
+  did:
+    - "Chose Astro + Starlight after comparing five options"
+    - Proved the riskiest part (data → schema → React island) on a skeleton before writing content
+    - "A sync script imports both projects' records; a privacy guard blocks paths and emails"
+    - "Typed content collections, interactive explorers, and a coverage check that fails the build"
+  decided: [la-0001, la-0002, la-0003, la-0004, la-0005]
+  concepts: [static-sites-and-content-as-data, architecture-decision-records]
+  lesson: Prove the riskiest assumption on a tiny skeleton before investing in the rest.

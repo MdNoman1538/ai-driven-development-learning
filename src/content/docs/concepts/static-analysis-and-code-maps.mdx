@@ -1,0 +1,44 @@
+---
+title: "Static analysis and code maps"
+description: "Reading code without running it: syntax trees, two passes, and honest certainty."
+concept:
+  summary: "Reading code without running it: syntax trees, two passes, and honest certainty."
+  projects: [project-viewer]
+  level: advanced
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+**Static analysis** reads source code *without running it*. A parser turns each file into an **abstract syntax tree (AST)**: modules, classes, functions, imports and calls as a tree. projectViewer builds a "world" from those trees: every function, and the links between them.
+
+## How projectViewer does it
+
+- **Pass 1, per file (pure).** Extract the facts about one file: definitions, imports, calls, simple types, API routes, SQL table names. The result depends only on that file's content, so it can be cached and run in parallel ([Caching by content](../caching-by-content/)).
+- **Pass 2, the whole project (in memory).** Link the facts across files: resolve imports and re-exports, `self`, inheritance, simple type inference, pytest fixtures, even tests that call an endpoint over HTTP.
+- **Honest certainty.** Each link is tagged **proven** (resolved through definitions), **inferred** (through simple type inference) or **pattern** (text matching, such as table names in SQL). Calls that can't be resolved are *counted*, not drawn. The map never presents a guess as fact.
+
+## A metric lesson
+
+The first "% linked" number said 49%, which sounded bad. Most "unlinked" calls were to Python builtins and libraries, which aren't misses. The metric was split into linked / local / library / builtin / unresolved, so it measures what it claims to.
+
+## The trade-off
+
+Python is dynamic, so some real links will always be missing. That's acceptable, and visible in the stats.
+
+## Check yourself
+
+<details class="check">
+<summary>Why tag links as proven / inferred / pattern instead of drawing only certain ones?</summary>
+
+Drawing only proven links hides many real ones; drawing guesses as facts misleads. Tagging keeps the map both useful and honest.
+
+</details>
+
+<details class="check">
+<summary>Why was '49% linked' misleading?</summary>
+
+It counted calls to builtins and external libraries as failures, although they're not supposed to link to project code.
+
+</details>

@@ -1,0 +1,48 @@
+---
+title: "AI code review"
+description: "A strong reviewer as a second opinion, labelled findings, and evals before any fine-tuning."
+concept:
+  summary: "A strong reviewer as a second opinion, labelled findings, and evals before any fine-tuning."
+  projects: [road-risk, project-viewer]
+  level: core
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What it is
+
+An **AI code reviewer** reads a change and reports likely bugs, as a second opinion before the human review. Here that's Claude Code's `/code-review`.
+
+## How we used it
+
+- **Run on every non-trivial PR.** On Road Risk it found 8 real issues in one PR and 9 in another. Examples: "risk as of 2018" still counted 2019–2025 crashes at full weight; the documented rebuild command didn't work; a truncated download was reported as tampering.
+- **Every finding is checked, then fixed test-first**, or rejected with a reason, and recorded in the devlog.
+- **A human still reads every diff.** AI review adds to it; it doesn't replace it.
+
+## Why not train our own reviewer now?
+
+ADR-0005: with ~10 commits there was no training data and no way to measure a reviewer. Fine-tuning teaches style and format, not the judgement to find real bugs, and **a confident weak reviewer is worse than none.** The plan:
+1. Use a strong existing reviewer.
+2. Label its findings right or wrong, which builds a dataset as a side effect.
+3. Build an **eval set with planted bugs and an answer key**.
+4. Only then try a small fine-tuned model, and adopt it only if it measurably comes close.
+
+<Aside type="tip">
+The general lesson: before you train a model, build the test that would tell you whether it's any good.
+</Aside>
+
+## Check yourself
+
+<details class="check">
+<summary>Why build an eval set before fine-tuning a reviewer?</summary>
+
+Without it you can't tell whether the tuned model is better, worse, or just more confident.
+
+</details>
+
+<details class="check">
+<summary>What did AI review catch that the tests didn't?</summary>
+
+Consequences across time and environments: future data loads, a command run differently from how it was tested, a stale log file, a cut-off download.
+
+</details>
