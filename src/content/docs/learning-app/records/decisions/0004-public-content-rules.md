@@ -7,11 +7,11 @@ record:
   project: learning-app
   kind: decisions
   source: https://github.com/MdNoman1538/ai-driven-development-learning/blob/main/docs/decisions/0004-public-content-rules.md
-  commit: d5f128c
+  commit: 81ca1ea
 ---
 
 :::note[Original record]
-Imported unchanged from [`docs/decisions/0004-public-content-rules.md`](https://github.com/MdNoman1538/ai-driven-development-learning/blob/main/docs/decisions/0004-public-content-rules.md) at commit `d5f128c`. It is the project's own record; the teaching pages explain it.
+Imported unchanged from [`docs/decisions/0004-public-content-rules.md`](https://github.com/MdNoman1538/ai-driven-development-learning/blob/main/docs/decisions/0004-public-content-rules.md) at commit `81ca1ea`. It is the project's own record; the teaching pages explain it.
 :::
 
 - **Status:** Accepted
