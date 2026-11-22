@@ -420,9 +420,9 @@
   },
   "learning-app": {
     "repo": "https://github.com/MdNoman1538/ai-driven-development-learning",
-    "commit": "d5f128c",
-    "commits": 1,
-    "mergedPullRequests": 0,
+    "commit": "81ca1ea",
+    "commits": 6,
+    "mergedPullRequests": 1,
     "firstCommit": "2026-11-22",
     "lastCommit": "2026-11-22",
     "python": null,
